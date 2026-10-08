@@ -252,7 +252,7 @@ namespace Dashboards.Api
                     });
                 }
                 if (uploads.Count > 0) db.SaveChanges();
-                return Content(HttpStatusCode.Created, RequirementDto(row));
+                return Content(HttpStatusCode.Created, RequirementDto(db, row));
             }
         }
 
@@ -266,7 +266,48 @@ namespace Dashboards.Api
                 var q = db.ClientRequirements.AsQueryable();
                 if (!admin) q = q.Where(r => r.ClientUserId == userId);
                 var rows = q.OrderByDescending(r => r.CreatedAt).Take(200).ToList();
-                return Ok(MarketplaceController.Page(rows.Select(RequirementDto)));
+                var ids = rows.Select(r => r.ClientUserId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+                var users = db.Users.Where(u => ids.Contains(u.Id)).ToList().ToDictionary(u => u.Id);
+                var profiles = db.ClientProfiles.Where(p => ids.Contains(p.UserId)).ToList()
+                    .GroupBy(p => p.UserId).ToDictionary(g => g.Key, g => g.First());
+                return Ok(MarketplaceController.Page(rows.Select(r =>
+                {
+                    ApplicationUser user = null;
+                    ClientProfile profile = null;
+                    if (!string.IsNullOrEmpty(r.ClientUserId))
+                    {
+                        users.TryGetValue(r.ClientUserId, out user);
+                        profiles.TryGetValue(r.ClientUserId, out profile);
+                    }
+                    return RequirementDto(r, user, profile);
+                })));
+            }
+        }
+
+        public class RequirementStatusBody
+        {
+            public string Status { get; set; }
+        }
+
+        [HttpPatch, Route("requirements/{id:int}")]
+        public IHttpActionResult PatchRequirement(int id, RequirementStatusBody body)
+        {
+            var userId = Require("CLIENT", "ADMIN");
+            var status = body == null || body.Status == null ? "" : body.Status.Trim().ToLowerInvariant();
+            if (status == "completed") status = "closed";
+            if (status != "new" && status != "acknowledged" && status != "closed")
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Status must be new, acknowledged, or closed");
+            using (var db = new ApplicationDbContext())
+            {
+                var row = db.ClientRequirements.FirstOrDefault(r => r.Id == id);
+                if (row == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Requirement not found");
+                if (!CurrentUser.Is(this, "ADMIN") && !string.Equals(row.ClientUserId, userId, StringComparison.Ordinal))
+                    throw ApiResults.Problem(Request, HttpStatusCode.Forbidden, "You do not have access to this action");
+                row.Status = status;
+                row.UpdatedAt = DateTime.Now;
+                row.UpdatedByUserId = userId;
+                db.SaveChanges();
+                return Ok(RequirementDto(db, row));
             }
         }
 
@@ -395,11 +436,109 @@ namespace Dashboards.Api
                         active,
                         membershipTier = m != null ? m.CurrentTier : "FREE",
                         paymentEnabled = m != null && m.PaymentEnabled,
-                        createdAt = (DateTime?)null,
-                        updatedAt = m != null ? (DateTime?)m.UpdatedAt : null
+                        name = u.FullName,
+                        createdAt = AccountCreated(db, u, m),
+                        updatedAt = AccountUpdated(db, u, m)
                     };
                 }).ToList();
                 return Ok(list);
+            }
+        }
+
+        static DateTime? ProfileCreated(ApplicationDbContext db, ApplicationUser user)
+        {
+            var role = AuthController.JavaRole(db, user);
+            if (role == "CLIENT")
+            {
+                var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == user.Id);
+                if (profile != null) return profile.CreatedAt;
+            }
+            else if (role == "SUPPLIER")
+            {
+                var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == user.Id);
+                if (profile != null) return profile.CreatedAt;
+            }
+            else if (role == "CONTRACTOR")
+            {
+                var profile = db.ContractorProfiles.FirstOrDefault(p => p.UserId == user.Id);
+                if (profile != null) return profile.CreatedAt;
+            }
+            return null;
+        }
+
+        static DateTime? ProfileUpdated(ApplicationDbContext db, ApplicationUser user)
+        {
+            var role = AuthController.JavaRole(db, user);
+            if (role == "SUPPLIER")
+            {
+                var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == user.Id);
+                if (profile != null) return profile.UpdatedAt;
+            }
+            if (role == "CONTRACTOR")
+            {
+                var profile = db.ContractorProfiles.FirstOrDefault(p => p.UserId == user.Id);
+                if (profile != null) return profile.UpdatedAt;
+            }
+            return null;
+        }
+
+        static DateTime? AccountCreated(ApplicationDbContext db, ApplicationUser user, UserMembership membership)
+        {
+            var created = ProfileCreated(db, user);
+            if (!created.HasValue && membership != null) created = membership.CreatedAt;
+            return created;
+        }
+
+        static DateTime? AccountUpdated(ApplicationDbContext db, ApplicationUser user, UserMembership membership)
+        {
+            var created = AccountCreated(db, user, membership);
+            DateTime? updated = ProfileUpdated(db, user);
+            if (membership != null && (!updated.HasValue || membership.UpdatedAt > updated.Value))
+                updated = membership.UpdatedAt;
+            if (!updated.HasValue) return null;
+            if (created.HasValue && updated.Value < created.Value.AddSeconds(2)) return null;
+            return updated;
+        }
+
+        [HttpGet, Route("admin/contractor-projects")]
+        public IHttpActionResult ContractorProjects()
+        {
+            Require("ADMIN");
+            using (var db = new ApplicationDbContext())
+            {
+                var rows = db.ContractorProjects.Include("Contractor").Include("Contractor.User")
+                    .OrderByDescending(p => p.CreatedAt).Take(500).ToList();
+                return Ok(rows.Select(p =>
+                {
+                    var contractor = p.Contractor;
+                    var name = contractor == null
+                        ? ""
+                        : (!string.IsNullOrWhiteSpace(contractor.CompanyName) ? contractor.CompanyName : contractor.OwnerName);
+                    if (contractor != null && contractor.User != null && string.IsNullOrWhiteSpace(name))
+                        name = contractor.User.FullName;
+                    var images = (p.GalleryImages ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(file => ComFiles.ResolveStored(file.Trim(), "Projects"))
+                        .Where(url => !string.IsNullOrEmpty(url))
+                        .ToList();
+                    return new
+                    {
+                        id = p.Id.ToString(),
+                        contractorUserId = contractor == null ? null : contractor.UserId,
+                        contractorName = name,
+                        title = p.Title,
+                        description = p.Description,
+                        location = p.Location,
+                        sector = p.Sector,
+                        manpowerSupplied = p.ManpowerSupplied,
+                        duration = p.Duration,
+                        status = p.ProjectType == ProjectType.Current ? "current" : "past",
+                        startDate = p.StartDate,
+                        endDate = p.EndDate,
+                        expectedEndDate = p.ExpectedEndDate,
+                        createdAt = p.CreatedAt,
+                        images
+                    };
+                }).ToList());
             }
         }
 
@@ -493,18 +632,34 @@ namespace Dashboards.Api
             };
         }
 
-        static object RequirementDto(ClientRequirement row)
+        static object RequirementDto(ApplicationDbContext db, ClientRequirement row)
         {
+            var user = string.IsNullOrEmpty(row.ClientUserId) ? null : db.Users.Find(row.ClientUserId);
+            var profile = user == null ? null : db.ClientProfiles.FirstOrDefault(p => p.UserId == user.Id);
+            return RequirementDto(row, user, profile);
+        }
+
+        static object RequirementDto(ClientRequirement row, ApplicationUser user, ClientProfile profile)
+        {
+            var addressParts = profile == null
+                ? new string[0]
+                : new[] { profile.AddressLine1, profile.City, profile.State, profile.PinCode }.Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+            var phone = user != null && !string.IsNullOrWhiteSpace(user.PhoneNumber)
+                ? user.PhoneNumber
+                : (profile == null ? null : profile.Phone);
             return new
             {
                 id = row.Id.ToString(),
                 clientUserId = row.ClientUserId,
                 clientName = row.ClientName,
+                clientEmail = user == null ? null : user.Email,
+                clientPhone = phone,
+                clientAddress = addressParts.Length == 0 ? null : string.Join(", ", addressParts),
                 title = row.Title,
                 description = row.Description,
                 location = row.Location,
                 budget = row.Budget,
-                status = row.Status,
+                status = row.Status == "completed" ? "closed" : row.Status,
                 createdAt = row.CreatedAt
             };
         }

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<connectionStrings>
+  <add name="DefaultConnection" providerName="MySql.Data.MySqlClient" connectionString="server=YOUR_MYSQL_HOST;port=3306;database=YOUR_DATABASE;uid=YOUR_USER;pwd=YOUR_PASSWORD;" />
+</connectionStrings>

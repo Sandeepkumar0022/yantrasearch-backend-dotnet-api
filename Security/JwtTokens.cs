@@ -86,7 +86,9 @@ namespace Dashboards.Security
 
         static string Sign(string value)
         {
-            var secret = ConfigurationManager.AppSettings["JwtSecret"] ?? "YantraSearch-Dev-Jwt-Secret-Change-Me";
+            var secret = ConfigurationManager.AppSettings["JwtSecret"];
+            if (string.IsNullOrWhiteSpace(secret) || secret.Length < 32)
+                throw new InvalidOperationException("JwtSecret is missing. Set a value of at least 32 characters in secrets.config.");
             using (var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret)))
                 return B64(hmac.ComputeHash(Encoding.UTF8.GetBytes(value)));
         }

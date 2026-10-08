@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.Linq;
 using System.Net;
 using System.Web.Http;
+using Dashboards.Services;
 using Dashboards.Data;
 using Dashboards.Models;
 using Dashboards.Security;
@@ -100,7 +100,7 @@ namespace Dashboards.Api
         {
             using (var db = new ApplicationDbContext())
             {
-                var rows = db.ContractorProfiles.Where(c => c.IsActive).OrderByDescending(c => c.CreatedAt).Take(500).ToList();
+                var rows = db.ContractorProfiles.Include("User").Where(c => c.IsActive).OrderByDescending(c => c.CreatedAt).Take(500).ToList();
                 return Ok(rows.Select(c =>
                 {
                     var name = string.IsNullOrWhiteSpace(c.CompanyName) ? c.OwnerName : c.CompanyName;
@@ -116,7 +116,7 @@ namespace Dashboards.Api
                         experience = c.WorkExperience,
                         rating = 0,
                         reviews = 0,
-                        image = "",
+                        image = ComFiles.UserPhoto(c.User),
                         availability = "Available",
                         skills = new string[0]
                     };
@@ -129,10 +129,10 @@ namespace Dashboards.Api
         {
             using (var db = new ApplicationDbContext())
             {
-                var c = db.ContractorProfiles.FirstOrDefault(x => x.Id == id);
+                var c = db.ContractorProfiles.Include("User").FirstOrDefault(x => x.Id == id);
                 if (c == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Contractor not found");
                 var name = string.IsNullOrWhiteSpace(c.CompanyName) ? c.OwnerName : c.CompanyName;
-                return Ok(new { id = c.Id.ToString(), companyName = name, description = c.SpecificWorkDetail, name, specialty = c.ContractorType, location = c.City });
+                return Ok(new { id = c.Id.ToString(), companyName = name, description = c.SpecificWorkDetail, name, specialty = c.ContractorType, location = c.City, image = ComFiles.UserPhoto(c.User) });
             }
         }
 
@@ -141,7 +141,9 @@ namespace Dashboards.Api
         {
             using (var db = new ApplicationDbContext())
             {
-                var rows = db.EmployeeProfiles.OrderByDescending(e => e.EmployeeId).Take(500).ToList();
+                var rows = db.EmployeeProfiles.Include("User").OrderByDescending(e => e.EmployeeId).Take(500).ToList();
+                var userIds = rows.Select(e => e.UserId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+                var photos = ProfilePhotoUrls(db, userIds);
                 return Ok(rows.Select(e => new
                 {
                     id = e.EmployeeId.ToString(),
@@ -154,7 +156,7 @@ namespace Dashboards.Api
                     experience = e.YearOfExperience ?? 0,
                     education = "",
                     skills = new string[0],
-                    image = string.IsNullOrEmpty(e.ResumeUrl) ? "" : PublicUrl(e.ResumeUrl),
+                    image = JobSeekerImage(e, photos),
                     availability = "Available"
                 }).ToList());
             }
@@ -165,9 +167,17 @@ namespace Dashboards.Api
         {
             using (var db = new ApplicationDbContext())
             {
-                var e = db.EmployeeProfiles.FirstOrDefault(x => x.EmployeeId == id);
+                var e = db.EmployeeProfiles.Include("User").FirstOrDefault(x => x.EmployeeId == id);
                 if (e == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Job seeker not found");
-                return Ok(new { id = e.EmployeeId.ToString(), fullName = e.FullName, headline = e.Designation, name = e.FullName });
+                var photos = ProfilePhotoUrls(db, string.IsNullOrEmpty(e.UserId) ? new List<string>() : new List<string> { e.UserId });
+                return Ok(new
+                {
+                    id = e.EmployeeId.ToString(),
+                    fullName = e.FullName,
+                    headline = e.Designation,
+                    name = e.FullName,
+                    image = JobSeekerImage(e, photos)
+                });
             }
         }
 
@@ -210,7 +220,7 @@ namespace Dashboards.Api
             {
                 var thumb = e.ThumbnailUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) || e.ThumbnailUrl.StartsWith("/")
                     ? e.ThumbnailUrl
-                    : "https://www.yantrasearch.com/img/cat/construction-equipment/" + e.ThumbnailUrl;
+                    : "/img/cat/construction-equipment/" + e.ThumbnailUrl;
                 images.Add(new { id = e.Id + "-t", url = PublicUrl(thumb), sortOrder = 0 });
             }
             return new
@@ -280,13 +290,30 @@ namespace Dashboards.Api
             };
         }
 
+        static Dictionary<string, string> ProfilePhotoUrls(ApplicationDbContext db, List<string> userIds)
+        {
+            if (userIds == null || userIds.Count == 0) return new Dictionary<string, string>();
+            return db.UserAttachments
+                .Where(a => userIds.Contains(a.UserId) && (a.AttachmentType == "PROFILE_PHOTO" || a.AttachmentType == "LOGO"))
+                .OrderByDescending(a => a.CreatedAt)
+                .ToList()
+                .GroupBy(a => a.UserId)
+                .ToDictionary(g => g.Key, g => ComFiles.AttachmentUrl(g.First().StoragePath));
+        }
+
+        static string JobSeekerImage(EmployeeProfile e, Dictionary<string, string> profilePhotoUrls)
+        {
+            var fromProfile = ComFiles.UserPhoto(e.User);
+            if (!string.IsNullOrEmpty(fromProfile)) return fromProfile;
+            string url;
+            if (!string.IsNullOrEmpty(e.UserId) && profilePhotoUrls.TryGetValue(e.UserId, out url))
+                return url;
+            return "";
+        }
+
         public static string PublicUrl(string path)
         {
-            if (string.IsNullOrWhiteSpace(path)) return "";
-            if (path.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return path;
-            var root = ConfigurationManager.AppSettings["PublicFileBase"] ?? "";
-            if (!path.StartsWith("/")) path = "/" + path;
-            return string.IsNullOrEmpty(root) ? path : root.TrimEnd('/') + path;
+            return ComFiles.PublicUrl(path);
         }
 
         string RequireUser()

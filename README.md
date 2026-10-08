@@ -10,7 +10,7 @@ Passwords stay ASP.NET Identity hashes. Login returns a Bearer JWT whose claims 
 
 1. On the MySQL database, run `Migrations/Scripts/AddJavaParityTables_MySQL.sql` once if those tables are not there yet. It only adds tables and a nullable phone column.
 2. Open `YantraSearch.Api.csproj` in Visual Studio on Windows. IIS Express is set to `http://localhost:8090/`.
-3. Put the live Grabweb connection string in `Web.config` `DefaultConnection` when you deploy. The file currently points at local `YantraNew_DB`.
+3. Copy `connectionStrings.config.example`, `mailSettings.config.example`, and `secrets.config.example` to `connectionStrings.config`, `mailSettings.config`, and `secrets.config` in this same folder. Fill in the database password, Gmail app password, and JWT secret. Those three files are gitignored. On the server they sit next to `Web.config`.
 4. In the React app, set `VITE_API_PROXY_TARGET=http://localhost:8090` (already the default in `vite.config.ts`) and run `npm run dev`. Leave `apiBaseUrl` blank in `config.local.json` so the browser calls `/api` on the Vite server and Vite forwards it here.
 
 ## Grabweb

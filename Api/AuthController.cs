@@ -104,6 +104,13 @@ namespace Dashboards.Api
                     UpdatedAt = DateTime.Now
                 });
                 db.SaveChanges();
+                try
+                {
+                    RegistrationMail.Send(user.Email, user.FullName, user.PhoneNumber, RegistrationRole(javaRole));
+                }
+                catch
+                {
+                }
                 return Ok(Issue(db, user));
             }
         }
@@ -178,6 +185,32 @@ namespace Dashboards.Api
             }
         }
 
+        public class ChangePasswordBody
+        {
+            public string CurrentPassword { get; set; }
+            public string NewPassword { get; set; }
+        }
+
+        [HttpPost, Route("change-password")]
+        public IHttpActionResult ChangePassword(ChangePasswordBody body)
+        {
+            var userId = CurrentUser.Id(this);
+            if (string.IsNullOrEmpty(userId))
+                throw ApiResults.Problem(Request, HttpStatusCode.Unauthorized, "Sign in required");
+            if (body == null || string.IsNullOrWhiteSpace(body.CurrentPassword) || string.IsNullOrWhiteSpace(body.NewPassword))
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Current password and new password are required");
+            if (body.NewPassword.Length < 8)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Password must be at least 8 characters");
+            using (var db = new ApplicationDbContext())
+            {
+                var users = new UserManager<ApplicationUser>(new UserStore<ApplicationUser>(db));
+                var result = users.ChangePassword(userId, body.CurrentPassword, body.NewPassword);
+                if (!result.Succeeded)
+                    throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, string.Join(" ", result.Errors));
+                return Ok(new { success = true });
+            }
+        }
+
         static object Issue(ApplicationDbContext db, ApplicationUser user)
         {
             var javaRole = JavaRole(db, user);
@@ -210,6 +243,17 @@ namespace Dashboards.Api
                 case UserType.Contractor: return "CONTRACTOR";
                 case UserType.Employee: return "JOB_SEEKER";
                 default: return "CLIENT";
+            }
+        }
+
+        static string RegistrationRole(string javaRole)
+        {
+            switch (javaRole)
+            {
+                case "SUPPLIER": return "Equipment Supplier";
+                case "CONTRACTOR": return "Project Contractor";
+                case "JOB_SEEKER": return "Construction Employee";
+                default: return "Business Client";
             }
         }
 

@@ -86,6 +86,11 @@ publish/
 *.temp
 ~$*
 
+# Server-only secrets. Copy the *.example files and fill them on each machine.
+connectionStrings.config
+mailSettings.config
+secrets.config
+
 # OS generated files
 .DS_Store
 Thumbs.db

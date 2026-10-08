@@ -399,8 +399,10 @@ namespace Dashboards.Api
                     .OrderByDescending(a => a.CreatedAt).ToList();
                 foreach (var a in attachments)
                 {
-                    docs.Add(new { id = a.Id.ToString(), docType = a.AttachmentType, url = "/api/v1/files/" + a.Id, uploadedAt = a.CreatedAt });
+                    docs.Add(new { id = a.Id.ToString(), docType = a.AttachmentType, url = ComFiles.AttachmentUrl(a.StoragePath), uploadedAt = a.CreatedAt });
                 }
+                if (!string.IsNullOrWhiteSpace(employee.ResumeUrl))
+                    docs.Add(new { id = "resume-" + employee.EmployeeId, docType = "RESUME", url = ComFiles.PublicUrl(employee.ResumeUrl), uploadedAt = (DateTime?)null });
                 var certs = db.EmployeeCertificates.Where(c => c.EmployeeId == id).ToList();
                 foreach (var c in certs)
                 {
