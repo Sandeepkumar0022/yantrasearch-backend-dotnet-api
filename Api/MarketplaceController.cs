@@ -231,7 +231,14 @@ namespace Dashboards.Api
         static void AddImage(List<object> images, int id, string url, int order)
         {
             if (string.IsNullOrWhiteSpace(url)) return;
-            images.Add(new { id = id + "-" + order, url = PublicUrl(url), sortOrder = order });
+            images.Add(new { id = id + "-" + order, url = EquipmentImageUrl(url), sortOrder = order });
+        }
+
+        static string EquipmentImageUrl(string url)
+        {
+            if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || url.Contains("/"))
+                return PublicUrl(url);
+            return PublicUrl("/Uploads/Equipments/" + url);
         }
 
         public static object OfferingDto(SupplierOffering o)
