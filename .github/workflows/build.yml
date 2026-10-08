@@ -1,0 +1,67 @@
+name: Build ASP.NET Framework Project for APIs
+
+on:
+  push:
+    branches: [ dotnet_api ]
+  pull_request:
+    branches: [ dotnet_api ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v2
+
+    - name: Restore NuGet packages
+      run: nuget restore YantraSearch.Api.csproj -PackagesDirectory packages
+
+    - name: Build API (Release)
+      run: msbuild YantraSearch.Api.csproj /p:Configuration=Release /p:Platform=AnyCPU /t:Build /verbosity:minimal
+
+    - name: Package deployment files
+      shell: powershell
+      run: |
+        $packageDir = "deployment-package"
+        Remove-Item -Path $packageDir -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+
+        if (-not (Test-Path "bin")) {
+          throw "Build output bin\ was not produced."
+        }
+        Write-Host "Copying bin..."
+        Copy-Item -Path "bin" -Destination "$packageDir\bin" -Recurse -Force
+
+        foreach ($file in @("Web.config", "Global.asax")) {
+          if (-not (Test-Path $file)) {
+            throw "Missing $file"
+          }
+          Copy-Item -Path $file -Destination "$packageDir\$file" -Force
+        }
+
+        New-Item -ItemType Directory -Force -Path "$packageDir\Uploads" | Out-Null
+
+        Write-Host "`nPackage structure:"
+        Get-ChildItem -Path $packageDir -Force | ForEach-Object {
+          if ($_.PSIsContainer) {
+            $count = (Get-ChildItem -Path $_.FullName -Recurse -File -ErrorAction SilentlyContinue).Count
+            Write-Host "  $($_.Name) - $count files"
+          } else {
+            Write-Host "  $($_.Name)"
+          }
+        }
+
+    - name: Upload deployment package
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-package
+        path: deployment-package/
+        retention-days: 7
