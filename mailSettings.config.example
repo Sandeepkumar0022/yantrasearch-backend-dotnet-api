@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mailSettings>
-  <smtp from="support@yantrasearch.com">
-    <network host="smtp.gmail.com" port="587" userName="yantrasearch.help@gmail.com" password="YOUR_GMAIL_APP_PASSWORD" enableSsl="true" />
-  </smtp>
-</mailSettings>
+<smtp from="support@yantrasearch.com">
+  <network host="smtp.gmail.com" port="587" userName="yantrasearch.help@gmail.com" password="YOUR_GMAIL_APP_PASSWORD" enableSsl="true" />
+</smtp>

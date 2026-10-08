@@ -292,7 +292,7 @@ namespace Dashboards.Api
         [HttpPatch, Route("requirements/{id:int}")]
         public IHttpActionResult PatchRequirement(int id, RequirementStatusBody body)
         {
-            var userId = Require("CLIENT", "ADMIN");
+            var userId = Require("ADMIN");
             var status = body == null || body.Status == null ? "" : body.Status.Trim().ToLowerInvariant();
             if (status == "completed") status = "closed";
             if (status != "new" && status != "acknowledged" && status != "closed")
@@ -301,8 +301,6 @@ namespace Dashboards.Api
             {
                 var row = db.ClientRequirements.FirstOrDefault(r => r.Id == id);
                 if (row == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Requirement not found");
-                if (!CurrentUser.Is(this, "ADMIN") && !string.Equals(row.ClientUserId, userId, StringComparison.Ordinal))
-                    throw ApiResults.Problem(Request, HttpStatusCode.Forbidden, "You do not have access to this action");
                 row.Status = status;
                 row.UpdatedAt = DateTime.Now;
                 row.UpdatedByUserId = userId;
@@ -720,27 +718,70 @@ namespace Dashboards.Api
     [RoutePrefix("api")]
     public class EnquiryController : ApiController
     {
-        public class EnquiryBody { public string FullName { get; set; } public string Phone { get; set; } public string Email { get; set; } public string Message { get; set; } }
+        public class EnquiryBody
+        {
+            public string Name { get; set; }
+            public string FullName { get; set; }
+            public string Phone { get; set; }
+            public string Email { get; set; }
+            public string Message { get; set; }
+        }
+
+        [HttpPost, Route("contact")]
+        public IHttpActionResult Contact(EnquiryBody body)
+        {
+            return SaveAndEmail(body, "Website contact form");
+        }
 
         [HttpPost, Route("enquiry")]
         public IHttpActionResult Enquiry(EnquiryBody body)
         {
+            return SaveAndEmail(body, "Homepage enquiry");
+        }
+
+        IHttpActionResult SaveAndEmail(EnquiryBody body, string subject)
+        {
             if (body == null || string.IsNullOrWhiteSpace(body.Phone))
                 throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Phone number is required");
-            using (var db = new ApplicationDbContext())
+            var name = string.IsNullOrWhiteSpace(body.FullName) ? body.Name : body.FullName;
+            var phone = body.Phone.Trim();
+            var email = string.IsNullOrWhiteSpace(body.Email) ? null : body.Email.Trim();
+            var message = body.Message;
+            try
             {
-                db.ContactMessages.Add(new ContactMessage
+                ContactMail.Send(name, email, phone, message, subject);
+            }
+            catch (Exception ex)
+            {
+                SaveContact(name, email, phone, message, subject, "failed: " + ex.Message);
+                throw ApiResults.Problem(Request, HttpStatusCode.BadGateway, "Email could not be sent.");
+            }
+            SaveContact(name, email, phone, message, subject, "sent");
+            return Ok(new { success = true });
+        }
+
+        static void SaveContact(string name, string email, string phone, string message, string subject, string status)
+        {
+            try
+            {
+                using (var db = new ApplicationDbContext())
                 {
-                    Name = body.FullName,
-                    Email = body.Email,
-                    Phone = body.Phone.Trim(),
-                    Subject = "Homepage enquiry",
-                    Message = body.Message,
-                    CreatedAt = DateTime.Now,
-                    EmailStatus = "saved"
-                });
-                db.SaveChanges();
-                return Ok(new { success = true });
+                    db.ContactMessages.Add(new ContactMessage
+                    {
+                        Name = name,
+                        Email = email,
+                        Phone = phone,
+                        Subject = subject,
+                        Message = message,
+                        CreatedAt = DateTime.Now,
+                        EmailStatus = status != null && status.Length > 255 ? status.Substring(0, 255) : status
+                    });
+                    db.SaveChanges();
+                }
+            }
+            catch
+            {
+                // The mail is the outcome the visitor is waiting on. A log-row failure must not hide a sent message.
             }
         }
     }
