@@ -172,6 +172,7 @@ namespace Dashboards.Api
 
         public class RequirementBody
         {
+            public string ClientName { get; set; }
             public string Title { get; set; }
             public string Description { get; set; }
             public string Location { get; set; }
@@ -179,9 +180,40 @@ namespace Dashboards.Api
         }
 
         [HttpPost, Route("requirements")]
-        public IHttpActionResult PostRequirement(RequirementBody body)
+        public IHttpActionResult PostRequirement()
         {
             var userId = Require("CLIENT", "ADMIN");
+            RequirementBody body;
+            var uploads = new System.Collections.Generic.List<System.Web.HttpPostedFile>();
+            var http = System.Web.HttpContext.Current == null ? null : System.Web.HttpContext.Current.Request;
+            if (http != null && http.ContentType != null && http.ContentType.StartsWith("multipart/", StringComparison.OrdinalIgnoreCase))
+            {
+                string payloadJson = null;
+                var payloadFile = http.Files["payload"];
+                if (payloadFile != null && payloadFile.ContentLength > 0)
+                {
+                    using (var reader = new System.IO.StreamReader(payloadFile.InputStream))
+                        payloadJson = reader.ReadToEnd();
+                }
+                if (string.IsNullOrWhiteSpace(payloadJson)) payloadJson = http.Form["payload"];
+                body = string.IsNullOrWhiteSpace(payloadJson)
+                    ? null
+                    : Newtonsoft.Json.JsonConvert.DeserializeObject<RequirementBody>(payloadJson);
+                for (var i = 0; i < http.Files.Count; i++)
+                {
+                    if (!string.Equals(http.Files.GetKey(i), "files", StringComparison.OrdinalIgnoreCase)) continue;
+                    var file = http.Files[i];
+                    if (file != null && file.ContentLength > 0) uploads.Add(file);
+                }
+            }
+            else
+            {
+                var json = Request.Content.ReadAsStringAsync().Result;
+                body = string.IsNullOrWhiteSpace(json)
+                    ? null
+                    : Newtonsoft.Json.JsonConvert.DeserializeObject<RequirementBody>(json);
+            }
+
             if (body == null || string.IsNullOrWhiteSpace(body.Title) || string.IsNullOrWhiteSpace(body.Description))
                 throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Title and description are required");
             using (var db = new ApplicationDbContext())
@@ -190,7 +222,9 @@ namespace Dashboards.Api
                 var row = new ClientRequirement
                 {
                     ClientUserId = userId,
-                    ClientName = user != null ? (user.FullName ?? user.Email) : body.Title,
+                    ClientName = !string.IsNullOrWhiteSpace(body.ClientName)
+                        ? body.ClientName.Trim()
+                        : (user != null ? (user.FullName ?? user.Email) : body.Title),
                     Title = body.Title.Trim(),
                     Description = body.Description.Trim(),
                     Location = body.Location,
@@ -201,7 +235,24 @@ namespace Dashboards.Api
                 };
                 db.ClientRequirements.Add(row);
                 db.SaveChanges();
-                return Ok(new { success = true, id = row.Id.ToString() });
+                foreach (var file in uploads)
+                {
+                    if (file.ContentLength > 8 * 1024 * 1024) continue;
+                    var bytes = new byte[file.ContentLength];
+                    file.InputStream.Position = 0;
+                    file.InputStream.Read(bytes, 0, bytes.Length);
+                    db.ClientRequirementAttachments.Add(new ClientRequirementAttachment
+                    {
+                        RequirementId = row.Id,
+                        Filename = System.IO.Path.GetFileName(string.IsNullOrWhiteSpace(file.FileName) ? "file" : file.FileName),
+                        ContentType = file.ContentType,
+                        SizeBytes = file.ContentLength,
+                        Data = bytes,
+                        CreatedAt = DateTime.Now
+                    });
+                }
+                if (uploads.Count > 0) db.SaveChanges();
+                return Content(HttpStatusCode.Created, RequirementDto(row));
             }
         }
 
@@ -215,19 +266,112 @@ namespace Dashboards.Api
                 var q = db.ClientRequirements.AsQueryable();
                 if (!admin) q = q.Where(r => r.ClientUserId == userId);
                 var rows = q.OrderByDescending(r => r.CreatedAt).Take(200).ToList();
-                return Ok(rows.Select(r => new
-                {
-                    id = r.Id.ToString(),
-                    clientUserId = r.ClientUserId,
-                    clientName = r.ClientName,
-                    title = r.Title,
-                    description = r.Description,
-                    location = r.Location,
-                    budget = r.Budget,
-                    status = r.Status,
-                    createdAt = r.CreatedAt
-                }).ToList());
+                return Ok(MarketplaceController.Page(rows.Select(RequirementDto)));
             }
+        }
+
+        public class ProfilePatch
+        {
+            public string Address { get; set; }
+            public string City { get; set; }
+            public string State { get; set; }
+            public string Pincode { get; set; }
+        }
+
+        [HttpGet, Route("admin/user-profiles/{userId}")]
+        public IHttpActionResult UserProfile(string userId)
+        {
+            Require("ADMIN");
+            using (var db = new ApplicationDbContext())
+            {
+                if (db.Users.Find(userId) == null)
+                    throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "User not found");
+                return Ok(ReadProfile(db, userId));
+            }
+        }
+
+        [HttpPatch, Route("admin/user-profiles/{userId}")]
+        public IHttpActionResult PatchUserProfile(string userId, ProfilePatch body)
+        {
+            Require("ADMIN");
+            using (var db = new ApplicationDbContext())
+            {
+                var user = db.Users.Find(userId);
+                if (user == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "User not found");
+                var role = AuthController.JavaRole(db, user);
+                if (role == "CLIENT")
+                {
+                    var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == userId);
+                    if (profile == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
+                    if (body != null && body.Address != null) profile.AddressLine1 = Trim(body.Address, 255);
+                    if (body != null && body.City != null) profile.City = Trim(body.City, 100);
+                    if (body != null && body.State != null) profile.State = Trim(body.State, 100);
+                    if (body != null && body.Pincode != null) profile.PinCode = Trim(body.Pincode, 20);
+                }
+                else if (role == "SUPPLIER")
+                {
+                    var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
+                    if (profile == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
+                    if (body != null && body.Address != null) profile.AddressLine1 = Trim(body.Address, 255);
+                    if (body != null && body.City != null) profile.City = Trim(body.City, 100);
+                    if (body != null && body.State != null) profile.State = Trim(body.State, 100);
+                    if (body != null && body.Pincode != null) profile.PinCode = Trim(body.Pincode, 10);
+                }
+                else if (role == "CONTRACTOR")
+                {
+                    var profile = db.ContractorProfiles.FirstOrDefault(p => p.UserId == userId);
+                    if (profile == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
+                    if (body != null && body.Address != null) profile.Location = Trim(body.Address, 255);
+                    if (body != null && body.City != null) profile.City = Trim(body.City, 128);
+                    if (body != null && body.State != null) profile.State = Trim(body.State, 128);
+                    if (body != null && body.Pincode != null) profile.Pin = Trim(body.Pincode, 45);
+                }
+                else if (role == "JOB_SEEKER")
+                {
+                    var profile = db.EmployeeProfiles.FirstOrDefault(p => p.UserId == userId);
+                    if (profile == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
+                    if (body != null && body.City != null) profile.LocationCity = Trim(body.City, 100);
+                    if (body != null && body.State != null) profile.LocationState = Trim(body.State, 100);
+                }
+                db.SaveChanges();
+                return Ok(ReadProfile(db, userId));
+            }
+        }
+
+        public class EmailBody
+        {
+            public string Subject { get; set; }
+            public string Body { get; set; }
+            public System.Collections.Generic.List<string> Recipients { get; set; }
+        }
+
+        [HttpPost, Route("emails/send")]
+        public IHttpActionResult SendEmail(EmailBody body)
+        {
+            Require("ADMIN");
+            if (body == null || string.IsNullOrWhiteSpace(body.Subject) || string.IsNullOrWhiteSpace(body.Body))
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Subject and body are required");
+            var recipients = (body.Recipients ?? new System.Collections.Generic.List<string>())
+                .Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => r.Trim()).Distinct().ToList();
+            if (recipients.Count == 0)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "At least one recipient is required");
+            try
+            {
+                using (var mail = new System.Net.Mail.MailMessage())
+                {
+                    mail.Subject = body.Subject.Trim();
+                    mail.Body = body.Body;
+                    mail.IsBodyHtml = false;
+                    foreach (var to in recipients) mail.To.Add(to);
+                    using (var smtp = new System.Net.Mail.SmtpClient())
+                        smtp.Send(mail);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ApiResults.Problem(Request, HttpStatusCode.BadGateway, "Email could not be sent. " + ex.Message);
+            }
+            return Content(HttpStatusCode.Accepted, new { success = true });
         }
 
         [HttpGet, Route("admin/users")]
@@ -347,6 +491,58 @@ namespace Dashboards.Api
                 qrPayload = MembershipPaymentService.ReadMetadata(order, "qrPayload"),
                 userId = order.UserId
             };
+        }
+
+        static object RequirementDto(ClientRequirement row)
+        {
+            return new
+            {
+                id = row.Id.ToString(),
+                clientUserId = row.ClientUserId,
+                clientName = row.ClientName,
+                title = row.Title,
+                description = row.Description,
+                location = row.Location,
+                budget = row.Budget,
+                status = row.Status,
+                createdAt = row.CreatedAt
+            };
+        }
+
+        static object ReadProfile(ApplicationDbContext db, string userId)
+        {
+            var user = db.Users.Find(userId);
+            if (user == null) return new { userId, role = (string)null, address = (string)null, city = (string)null, state = (string)null, pincode = (string)null };
+            var role = AuthController.JavaRole(db, user);
+            string address = null, city = null, state = null, pincode = null;
+            if (role == "CLIENT")
+            {
+                var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == userId);
+                if (profile != null) { address = profile.AddressLine1; city = profile.City; state = profile.State; pincode = profile.PinCode; }
+            }
+            else if (role == "SUPPLIER")
+            {
+                var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
+                if (profile != null) { address = profile.AddressLine1; city = profile.City; state = profile.State; pincode = profile.PinCode; }
+            }
+            else if (role == "CONTRACTOR")
+            {
+                var profile = db.ContractorProfiles.FirstOrDefault(p => p.UserId == userId);
+                if (profile != null) { address = profile.Location; city = profile.City; state = profile.State; pincode = profile.Pin; }
+            }
+            else if (role == "JOB_SEEKER")
+            {
+                var profile = db.EmployeeProfiles.FirstOrDefault(p => p.UserId == userId);
+                if (profile != null) { city = profile.LocationCity; state = profile.LocationState; }
+            }
+            return new { userId, role, address, city, state, pincode };
+        }
+
+        static string Trim(string value, int max)
+        {
+            if (value == null) return null;
+            var trimmed = value.Trim();
+            return trimmed.Length <= max ? trimmed : trimmed.Substring(0, max);
         }
 
         string RequireUser()

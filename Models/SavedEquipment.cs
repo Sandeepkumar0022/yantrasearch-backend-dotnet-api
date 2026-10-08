@@ -42,4 +42,24 @@ namespace Dashboards.Models
 
         public DateTime CreatedAt { get; set; } = DateTime.Now;
     }
+
+    public class SavedJobSeeker
+    {
+        [Key]
+        public int Id { get; set; }
+
+        [Required]
+        public string ClientId { get; set; }
+
+        [ForeignKey("ClientId")]
+        public virtual ApplicationUser Client { get; set; }
+
+        [Required]
+        public int EmployeeId { get; set; }
+
+        [ForeignKey("EmployeeId")]
+        public virtual EmployeeProfile Employee { get; set; }
+
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+    }
 }

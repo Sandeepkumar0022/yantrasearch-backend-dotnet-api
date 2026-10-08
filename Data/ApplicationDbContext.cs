@@ -49,6 +49,7 @@ namespace Dashboards.Data
         public DbSet<SavedEquipment> SavedEquipments { get; set; }
 
         public DbSet<SavedContractor> SavedContractors { get; set; }
+        public DbSet<SavedJobSeeker> SavedJobSeekers { get; set; }
         public DbSet<VendorReview> VendorReviews { get; set; }
 
         public DbSet<ContractorReview> ContractorReviews { get; set; }

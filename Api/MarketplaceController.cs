@@ -19,6 +19,7 @@ namespace Dashboards.Api
             using (var db = new ApplicationDbContext())
             {
                 var rows = db.Equipments.Include("VendorProfile")
+                    .Where(e => e.Status == null || e.Status != "DELETED")
                     .OrderBy(e => e.Name)
                     .Take(Math.Min(size, 500))
                     .ToList();
@@ -45,7 +46,8 @@ namespace Dashboards.Api
         {
             using (var db = new ApplicationDbContext())
             {
-                var row = db.Equipments.Include("VendorProfile").FirstOrDefault(e => e.Id == id);
+                var row = db.Equipments.Include("VendorProfile")
+                    .FirstOrDefault(e => e.Id == id && (e.Status == null || e.Status != "DELETED"));
                 if (row == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Equipment not found");
                 return Ok(EquipmentDto(row));
             }
@@ -192,13 +194,13 @@ namespace Dashboards.Api
             }
         }
 
-        static object Page<T>(IEnumerable<T> rows)
+        public static object Page<T>(IEnumerable<T> rows)
         {
             var list = rows.ToList();
             return new { content = list, totalElements = list.Count, totalPages = 1 };
         }
 
-        static object EquipmentDto(Equipment e)
+        public static object EquipmentDto(Equipment e)
         {
             var images = new List<object>();
             AddImage(images, e.Id, e.Image1Url, 0);
@@ -232,7 +234,7 @@ namespace Dashboards.Api
             images.Add(new { id = id + "-" + order, url = PublicUrl(url), sortOrder = order });
         }
 
-        static object OfferingDto(SupplierOffering o)
+        public static object OfferingDto(SupplierOffering o)
         {
             return new
             {
@@ -249,7 +251,7 @@ namespace Dashboards.Api
             };
         }
 
-        static object JobDto(Job j)
+        public static object JobDto(Job j)
         {
             return new
             {

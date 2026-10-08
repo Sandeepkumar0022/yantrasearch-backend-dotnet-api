@@ -199,3 +199,13 @@ FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM AppSetting WHERE SettingKey = 'upi.pay
 INSERT INTO AppSetting (SettingKey, Value, CreatedAt, UpdatedAt)
 SELECT 'mail.from', 'yantrasearch.help@gmail.com', NOW(), NOW()
 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM AppSetting WHERE SettingKey = 'mail.from');
+
+CREATE TABLE IF NOT EXISTS SavedJobSeeker (
+  Id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  ClientId VARCHAR(128) NOT NULL,
+  EmployeeId INT NOT NULL,
+  CreatedAt DATETIME NOT NULL,
+  INDEX IX_SavedJobSeeker_Client (ClientId),
+  CONSTRAINT FK_SavedJobSeeker_Users FOREIGN KEY (ClientId) REFERENCES Users (Id) ON DELETE CASCADE,
+  CONSTRAINT FK_SavedJobSeeker_Employee FOREIGN KEY (EmployeeId) REFERENCES EmployeeProfile (EmployeeId) ON DELETE CASCADE
+);
