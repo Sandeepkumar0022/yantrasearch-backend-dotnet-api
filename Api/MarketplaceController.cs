@@ -101,26 +101,7 @@ namespace Dashboards.Api
             using (var db = new ApplicationDbContext())
             {
                 var rows = db.ContractorProfiles.Include("User").Where(c => c.IsActive).OrderByDescending(c => c.CreatedAt).Take(500).ToList();
-                return Ok(rows.Select(c =>
-                {
-                    var name = string.IsNullOrWhiteSpace(c.CompanyName) ? c.OwnerName : c.CompanyName;
-                    var place = string.Join(", ", new[] { c.City, c.State }.Where(s => !string.IsNullOrWhiteSpace(s)));
-                    return new
-                    {
-                        id = c.Id.ToString(),
-                        companyName = name,
-                        description = c.SpecificWorkDetail ?? c.WorkingSectors ?? "",
-                        name,
-                        specialty = c.ContractorType ?? "",
-                        location = place,
-                        experience = c.WorkExperience,
-                        rating = 0,
-                        reviews = 0,
-                        image = ComFiles.UserPhoto(c.User),
-                        availability = "Available",
-                        skills = new string[0]
-                    };
-                }).ToList());
+                return Ok(rows.Select(c => ContractorPublic(c, null)).ToList());
             }
         }
 
@@ -131,8 +112,8 @@ namespace Dashboards.Api
             {
                 var c = db.ContractorProfiles.Include("User").FirstOrDefault(x => x.Id == id);
                 if (c == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Contractor not found");
-                var name = string.IsNullOrWhiteSpace(c.CompanyName) ? c.OwnerName : c.CompanyName;
-                return Ok(new { id = c.Id.ToString(), companyName = name, description = c.SpecificWorkDetail, name, specialty = c.ContractorType, location = c.City, image = ComFiles.UserPhoto(c.User) });
+                var projects = db.ContractorProjects.Where(p => p.ContractorId == c.Id && p.IsActive).OrderByDescending(p => p.CreatedAt).Take(20).ToList();
+                return Ok(ContractorPublic(c, projects));
             }
         }
 
@@ -142,23 +123,12 @@ namespace Dashboards.Api
             using (var db = new ApplicationDbContext())
             {
                 var rows = db.EmployeeProfiles.Include("User").OrderByDescending(e => e.EmployeeId).Take(500).ToList();
-                var userIds = rows.Select(e => e.UserId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+                var userIds = rows.Select(e => e.UserId).Where(uid => !string.IsNullOrEmpty(uid)).Distinct().ToList();
                 var photos = ProfilePhotoUrls(db, userIds);
-                return Ok(rows.Select(e => new
-                {
-                    id = e.EmployeeId.ToString(),
-                    fullName = e.FullName,
-                    headline = e.Designation,
-                    name = e.FullName,
-                    position = e.Designation ?? "",
-                    summary = e.Designation ?? "",
-                    location = string.Join(", ", new[] { e.LocationCity, e.LocationState }.Where(s => !string.IsNullOrWhiteSpace(s))),
-                    experience = e.YearOfExperience ?? 0,
-                    education = "",
-                    skills = new string[0],
-                    image = JobSeekerImage(e, photos),
-                    availability = "Available"
-                }).ToList());
+                var employeeIds = rows.Select(e => e.EmployeeId).ToList();
+                var experiences = db.EmployeeExperiences.Where(x => employeeIds.Contains(x.EmployeeId)).ToList();
+                var educations = db.EmployeeEducations.Where(x => employeeIds.Contains(x.EmployeeId)).ToList();
+                return Ok(rows.Select(e => JobSeekerPublic(e, photos, experiences.Where(x => x.EmployeeId == e.EmployeeId), educations.Where(x => x.EmployeeId == e.EmployeeId))).ToList());
             }
         }
 
@@ -170,14 +140,9 @@ namespace Dashboards.Api
                 var e = db.EmployeeProfiles.Include("User").FirstOrDefault(x => x.EmployeeId == id);
                 if (e == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Job seeker not found");
                 var photos = ProfilePhotoUrls(db, string.IsNullOrEmpty(e.UserId) ? new List<string>() : new List<string> { e.UserId });
-                return Ok(new
-                {
-                    id = e.EmployeeId.ToString(),
-                    fullName = e.FullName,
-                    headline = e.Designation,
-                    name = e.FullName,
-                    image = JobSeekerImage(e, photos)
-                });
+                var experiences = db.EmployeeExperiences.Where(x => x.EmployeeId == e.EmployeeId).ToList();
+                var educations = db.EmployeeEducations.Where(x => x.EmployeeId == e.EmployeeId).ToList();
+                return Ok(JobSeekerPublic(e, photos, experiences, educations));
             }
         }
 
@@ -242,6 +207,14 @@ namespace Dashboards.Api
                 description = e.Description,
                 location = e.Location,
                 ratePerDay = e.RentalRatePerDay,
+                ratePerMonth = e.RentalRatePerMonth,
+                salePrice = e.SalePrice,
+                make = e.Make,
+                modelNumber = e.ModelNumber,
+                yearOfManufacture = e.YearOfManufacture,
+                specification = e.Specification,
+                capacity = e.Capacity,
+                condition = e.Condition,
                 availabilityStatus = e.IsAvailable ? "AVAILABLE" : "UNAVAILABLE",
                 images
             };
@@ -296,6 +269,100 @@ namespace Dashboards.Api
                 salaryPeriod = j.SalaryPeriod,
                 status = j.Status,
                 publishedAt = j.PublishedAt
+            };
+        }
+
+        static object ContractorPublic(ContractorProfile c, List<ContractorProject> projects)
+        {
+            var name = string.IsNullOrWhiteSpace(c.CompanyName) ? c.OwnerName : c.CompanyName;
+            var place = string.Join(", ", new[] { c.Location, c.City, c.State, c.Pin }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            var skills = (c.WorkingSectors ?? "")
+                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
+                .ToArray();
+            return new
+            {
+                id = c.Id.ToString(),
+                companyName = name,
+                description = c.SpecificWorkDetail ?? c.WorkingSectors ?? "",
+                name,
+                specialty = c.ContractorType ?? "",
+                location = place,
+                experience = c.WorkExperience,
+                rating = 0,
+                reviews = 0,
+                image = ComFiles.UserPhoto(c.User),
+                availability = "Available",
+                skills,
+                ownerName = c.OwnerName,
+                contactPerson = c.ContactPerson,
+                phone = c.Mobile,
+                email = c.Email,
+                website = c.Website,
+                laborStrength = c.LaborStrength,
+                workLocations = c.WorkLocations,
+                sectors = c.WorkingSectors,
+                projects = (projects ?? new List<ContractorProject>()).Select(p => new
+                {
+                    id = p.Id.ToString(),
+                    title = p.Title,
+                    description = p.Description,
+                    location = p.Location,
+                    sector = p.Sector,
+                    status = p.ProjectType == ProjectType.Current ? "current" : "past"
+                }).ToList()
+            };
+        }
+
+        static EmployeeExperience CurrentJob(IEnumerable<EmployeeExperience> rows)
+        {
+            var list = rows.ToList();
+            return list.FirstOrDefault(x => x.IsCurrentCompany)
+                ?? list.Where(x => x.EndDate == null).OrderByDescending(x => x.StartDate).FirstOrDefault()
+                ?? list.OrderByDescending(x => x.StartDate).FirstOrDefault();
+        }
+
+        static string EducationLabel(IEnumerable<EmployeeEducation> rows)
+        {
+            var row = rows.OrderByDescending(x => x.EndYear ?? x.StartYear ?? 0).FirstOrDefault();
+            if (row == null) return "";
+            var course = string.IsNullOrWhiteSpace(row.CourseName) ? row.CourseMajor : row.CourseName;
+            if (string.IsNullOrWhiteSpace(course)) return row.CollegeName ?? "";
+            if (string.IsNullOrWhiteSpace(row.CollegeName)) return course;
+            return course + ", " + row.CollegeName;
+        }
+
+        static object JobSeekerPublic(EmployeeProfile e, Dictionary<string, string> photos, IEnumerable<EmployeeExperience> experiences, IEnumerable<EmployeeEducation> educations)
+        {
+            var jobs = experiences.ToList();
+            var current = CurrentJob(jobs);
+            return new
+            {
+                id = e.EmployeeId.ToString(),
+                fullName = e.FullName,
+                headline = e.Designation,
+                name = e.FullName,
+                position = e.Designation ?? "",
+                summary = e.Designation ?? "",
+                location = string.Join(", ", new[] { e.LocationCity, e.LocationState }.Where(s => !string.IsNullOrWhiteSpace(s))),
+                experience = e.YearOfExperience ?? 0,
+                education = EducationLabel(educations),
+                currentCompany = current != null ? current.CompanyName : "",
+                department = current != null ? current.Department ?? "" : "",
+                readyToRelocate = e.ReadyToRelocate,
+                skills = new string[0],
+                image = JobSeekerImage(e, photos),
+                availability = "Available",
+                experiences = jobs.OrderByDescending(x => x.IsCurrentCompany).ThenByDescending(x => x.StartDate).Select(x => new
+                {
+                    companyName = x.CompanyName,
+                    designation = x.Designation,
+                    department = x.Department,
+                    city = x.City,
+                    isCurrent = x.IsCurrentCompany || x.EndDate == null,
+                    description = x.Description
+                }).ToList()
             };
         }
 
