@@ -211,6 +211,106 @@ namespace Dashboards.Api
             public string NewPassword { get; set; }
         }
 
+        public class SelfProfileBody
+        {
+            public string Name { get; set; }
+            public string Phone { get; set; }
+            public string CompanyName { get; set; }
+        }
+
+        [HttpPatch, Route("profile")]
+        public IHttpActionResult UpdateProfile(SelfProfileBody body)
+        {
+            var userId = CurrentUser.Id(this);
+            if (string.IsNullOrEmpty(userId))
+                throw ApiResults.Problem(Request, HttpStatusCode.Unauthorized, "Sign in required");
+            if (body == null)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Profile details are required");
+            using (var db = new ApplicationDbContext())
+            {
+                var user = db.Users.Find(userId);
+                if (user == null)
+                    throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "User not found");
+                if (body.Name != null)
+                {
+                    var name = body.Name.Trim();
+                    if (name.Length == 0)
+                        throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Name is required");
+                    user.FullName = Cut(name, 150);
+                }
+                if (body.Phone != null)
+                {
+                    var phone = body.Phone.Trim();
+                    if (phone.Length > 0 && db.Users.Any(u => u.Id != userId && u.PhoneNumber == phone))
+                        throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "This phone number is already in use");
+                    user.PhoneNumber = phone;
+                }
+                var company = body.CompanyName == null ? null : body.CompanyName.Trim();
+                var role = JavaRole(db, user);
+                if (role == "SUPPLIER")
+                {
+                    var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
+                    if (profile != null)
+                    {
+                        if (body.Name != null)
+                        {
+                            profile.OwnerName = Cut(user.FullName, 150);
+                            profile.ContactPerson = Cut(user.FullName, 100);
+                        }
+                        if (body.Phone != null) profile.Mobile = Cut(user.PhoneNumber, 20);
+                        if (company != null)
+                        {
+                            if (company.Length == 0)
+                                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Company name is required");
+                            profile.CompanyName = Cut(company, 150);
+                        }
+                    }
+                }
+                else if (role == "CLIENT")
+                {
+                    var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == userId);
+                    if (profile != null)
+                    {
+                        if (body.Name != null)
+                        {
+                            profile.FullName = Cut(user.FullName, 150);
+                            profile.CompanyName = Cut(user.FullName, 200);
+                        }
+                        if (body.Phone != null) profile.Phone = Cut(user.PhoneNumber, 50);
+                    }
+                }
+                else if (role == "CONTRACTOR")
+                {
+                    var profile = db.ContractorProfiles.FirstOrDefault(p => p.UserId == userId);
+                    if (profile != null)
+                    {
+                        if (body.Name != null) profile.OwnerName = Cut(user.FullName, 150);
+                        if (body.Phone != null) profile.Mobile = Cut(user.PhoneNumber, 20);
+                        if (!string.IsNullOrEmpty(company)) profile.CompanyName = Cut(company, 150);
+                    }
+                }
+                else if (role == "JOB_SEEKER")
+                {
+                    var profile = db.EmployeeProfiles.FirstOrDefault(p => p.UserId == userId);
+                    if (profile != null && body.Name != null)
+                        profile.FullName = Cut(user.FullName, 150);
+                }
+                db.SaveChanges();
+                var savedCompany = company;
+                if (role == "SUPPLIER")
+                {
+                    var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
+                    savedCompany = profile == null ? company : profile.CompanyName;
+                }
+                else if (role == "CLIENT")
+                {
+                    var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == userId);
+                    savedCompany = profile == null ? user.FullName : profile.CompanyName;
+                }
+                return Ok(new { name = user.FullName, phone = user.PhoneNumber, companyName = savedCompany });
+            }
+        }
+
         [HttpPost, Route("change-password")]
         public IHttpActionResult ChangePassword(ChangePasswordBody body)
         {
