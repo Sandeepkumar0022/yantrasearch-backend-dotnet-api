@@ -31,6 +31,12 @@ namespace Dashboards.Models
 
         public string Note { get; set; }
 
+        [StringLength(512)]
+        public string ImageUrl { get; set; }
+
+        [StringLength(150)]
+        public string UpdatedByName { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
         public DateTime? DeletedAt { get; set; }

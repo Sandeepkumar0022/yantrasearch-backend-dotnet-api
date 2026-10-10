@@ -36,7 +36,9 @@ namespace Dashboards.Api
                 var vendor = db.VendorProfiles.FirstOrDefault(v => v.UserId == userId);
                 var rows = vendor == null
                     ? new List<Equipment>()
-                    : db.Equipments.Include("VendorProfile").Where(e => e.VendorId == vendor.Id).OrderByDescending(e => e.CreatedAt).ToList();
+                    : db.Equipments.Include("VendorProfile")
+                        .Where(e => e.VendorId == vendor.Id && (e.Status == null || e.Status != "DELETED"))
+                        .OrderByDescending(e => e.CreatedAt).ToList();
                 return Ok(Page(rows.Select(EquipmentDto)));
             }
         }
@@ -216,7 +218,9 @@ namespace Dashboards.Api
                 capacity = e.Capacity,
                 condition = e.Condition,
                 availabilityStatus = e.IsAvailable ? "AVAILABLE" : "UNAVAILABLE",
-                images
+                images,
+                updatedAt = e.UpdatedAt,
+                updatedBy = e.UpdatedByName
             };
         }
 
@@ -249,8 +253,19 @@ namespace Dashboards.Api
                 categoryOther = o.CategoryOther,
                 subcategory = o.Subcategory,
                 subcategoryOther = o.SubcategoryOther,
-                note = o.Note
+                note = o.Note,
+                imageUrl = string.IsNullOrWhiteSpace(o.ImageUrl) ? null : PublicUrl(o.ImageUrl),
+                updatedAt = o.UpdatedAt,
+                updatedBy = o.UpdatedByName
             };
+        }
+
+        public static string ActorName(ApplicationDbContext db, string userId)
+        {
+            if (string.IsNullOrEmpty(userId)) return null;
+            var user = db.Users.Find(userId);
+            if (user == null) return null;
+            return string.IsNullOrWhiteSpace(user.FullName) ? user.Email : user.FullName.Trim();
         }
 
         public static object JobDto(Job j)

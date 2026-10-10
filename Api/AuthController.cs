@@ -111,7 +111,7 @@ namespace Dashboards.Api
                 if (!created.Succeeded)
                     throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, string.Join(" ", created.Errors));
                 users.AddToRole(user.Id, identityRole);
-                CreateProfile(db, user, javaRole, body);
+                var supplyItems = CreateProfile(db, user, javaRole, body);
                 db.UserMemberships.Add(new UserMembership
                 {
                     UserId = user.Id,
@@ -129,7 +129,9 @@ namespace Dashboards.Api
                 catch
                 {
                 }
-                return Ok(Issue(db, user));
+                var issued = Newtonsoft.Json.Linq.JObject.FromObject(Issue(db, user));
+                issued["supplyItems"] = Newtonsoft.Json.Linq.JArray.FromObject(supplyItems);
+                return Ok(issued);
             }
         }
 
@@ -306,9 +308,11 @@ namespace Dashboards.Api
             db.SaveChanges();
         }
 
-        static void CreateProfile(ApplicationDbContext db, ApplicationUser user, string javaRole, RegisterBody body)
+        static List<object> CreateProfile(ApplicationDbContext db, ApplicationUser user, string javaRole, RegisterBody body)
         {
+            var created = new List<object>();
             var name = user.FullName;
+            var actor = string.IsNullOrWhiteSpace(user.FullName) ? user.Email : user.FullName.Trim();
             if (javaRole == "SUPPLIER")
             {
                 var company = FirstNonEmpty(body.CompanyName, name);
@@ -347,7 +351,7 @@ namespace Dashboards.Api
                     var title = FirstNonEmpty(item.Title, categoryOther, category);
                     if (string.Equals(group, "EQUIPMENT_AND_HEAVY_PLANT", StringComparison.OrdinalIgnoreCase))
                     {
-                        db.Equipments.Add(new Equipment
+                        var equipment = new Equipment
                         {
                             VendorId = profile.Id,
                             Name = Cut(string.IsNullOrWhiteSpace(title) ? "Equipment" : title, 100),
@@ -356,13 +360,18 @@ namespace Dashboards.Api
                             Location = Cut(location, 255),
                             IsAvailable = true,
                             Status = "AVAILABLE",
-                            CreatedAt = DateTime.Now
-                        });
+                            CreatedAt = DateTime.Now,
+                            UpdatedAt = DateTime.Now,
+                            UpdatedByName = Cut(actor, 150)
+                        };
+                        db.Equipments.Add(equipment);
+                        db.SaveChanges();
+                        created.Add(new { id = equipment.Id.ToString(), kind = "equipment" });
                         equipmentCount++;
                     }
                     else
                     {
-                        db.SupplierOfferings.Add(new SupplierOffering
+                        var offering = new SupplierOffering
                         {
                             VendorProfileId = profile.Id,
                             OfferingGroup = Cut(group, 64),
@@ -372,11 +381,16 @@ namespace Dashboards.Api
                             SubcategoryOther = Cut(item.SubcategoryOther, 255),
                             Note = note,
                             CreatedAt = DateTime.Now,
-                            UpdatedAt = DateTime.Now
-                        });
+                            UpdatedAt = DateTime.Now,
+                            UpdatedByName = Cut(actor, 150)
+                        };
+                        db.SupplierOfferings.Add(offering);
+                        db.SaveChanges();
+                        created.Add(new { id = offering.Id.ToString(), kind = "offering" });
                     }
                 }
                 profile.TotalEquipments = equipmentCount;
+                db.SaveChanges();
             }
             else if (javaRole == "CONTRACTOR")
             {
@@ -415,6 +429,7 @@ namespace Dashboards.Api
                     AddressLine1 = body.Address
                 });
             }
+            return created;
         }
     }
 }

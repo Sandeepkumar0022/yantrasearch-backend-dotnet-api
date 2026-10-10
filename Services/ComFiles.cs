@@ -91,6 +91,17 @@ namespace Dashboards.Services
             };
         }
 
+        public static string SaveNamed(HttpPostedFile file, string folder, string prefix)
+        {
+            var ext = Path.GetExtension(file == null ? "" : file.FileName);
+            if (string.IsNullOrEmpty(ext) || ext.Length > 8) ext = ".jpg";
+            var name = prefix + "_" + Guid.NewGuid().ToString("N") + ext;
+            var dir = Map("~/Uploads/" + folder);
+            Directory.CreateDirectory(dir);
+            file.SaveAs(Path.Combine(dir, name));
+            return name;
+        }
+
         public static string Save(HttpPostedFile file, Target target)
         {
             var dir = Map("~/Uploads/" + target.Folder);

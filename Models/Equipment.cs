@@ -57,5 +57,8 @@ namespace Dashboards.Models
 
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+
+        [StringLength(150)]
+        public string UpdatedByName { get; set; }
     }
 }

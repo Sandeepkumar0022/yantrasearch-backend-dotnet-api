@@ -235,7 +235,7 @@ namespace Dashboards.Api
                 };
                 db.ClientRequirements.Add(row);
                 db.SaveChanges();
-                var attachmentNames = new List<string>();
+                var mailFiles = new List<RequirementMail.RequirementFile>();
                 foreach (var file in uploads)
                 {
                     if (file.ContentLength > 8 * 1024 * 1024) continue;
@@ -243,7 +243,12 @@ namespace Dashboards.Api
                     file.InputStream.Position = 0;
                     file.InputStream.Read(bytes, 0, bytes.Length);
                     var filename = System.IO.Path.GetFileName(string.IsNullOrWhiteSpace(file.FileName) ? "file" : file.FileName);
-                    attachmentNames.Add(filename);
+                    mailFiles.Add(new RequirementMail.RequirementFile
+                    {
+                        Name = filename,
+                        ContentType = file.ContentType,
+                        Data = bytes
+                    });
                     db.ClientRequirementAttachments.Add(new ClientRequirementAttachment
                     {
                         RequirementId = row.Id,
@@ -275,7 +280,7 @@ namespace Dashboards.Api
                         row.Location,
                         row.Budget,
                         row.Description,
-                        attachmentNames);
+                        mailFiles);
                 }
                 catch
                 {

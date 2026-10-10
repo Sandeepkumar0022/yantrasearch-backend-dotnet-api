@@ -85,6 +85,7 @@ namespace Dashboards.Api
                         row.IsAvailable = !string.Equals(body.AvailabilityStatus, "UNAVAILABLE", StringComparison.OrdinalIgnoreCase);
                     }
                     row.UpdatedAt = DateTime.Now;
+                    row.UpdatedByName = MarketplaceController.ActorName(db, userId);
                     db.SaveChanges();
                 }
                 return Ok(MarketplaceController.EquipmentDto(row));
@@ -283,6 +284,7 @@ namespace Dashboards.Api
             {
                 var row = OwnedOffering(db, id, userId);
                 ApplyOffering(row, body);
+                row.UpdatedByName = MarketplaceController.ActorName(db, userId);
                 db.SaveChanges();
                 return Ok(MarketplaceController.OfferingDto(row));
             }
@@ -326,6 +328,53 @@ namespace Dashboards.Api
                 }
                 return Ok(created);
             }
+        }
+
+        [HttpPost, Route("supplier-offerings/{id:int}/image")]
+        public IHttpActionResult UploadOfferingImage(int id)
+        {
+            var userId = Require("SUPPLIER", "ADMIN");
+            var file = PostedImage();
+            using (var db = new ApplicationDbContext())
+            {
+                var row = OwnedOffering(db, id, userId);
+                var name = ComFiles.SaveNamed(file, "Offerings", "ITEM");
+                row.ImageUrl = "/Uploads/Offerings/" + name;
+                row.UpdatedAt = DateTime.Now;
+                row.UpdatedByName = MarketplaceController.ActorName(db, userId);
+                db.SaveChanges();
+                return Ok(MarketplaceController.OfferingDto(row));
+            }
+        }
+
+        [HttpPost, Route("equipment/{id:int}/image")]
+        public IHttpActionResult UploadEquipmentImage(int id)
+        {
+            var userId = Require("SUPPLIER", "ADMIN");
+            var file = PostedImage();
+            using (var db = new ApplicationDbContext())
+            {
+                var row = OwnedEquipment(db, id, userId);
+                row.Image1Url = ComFiles.SaveNamed(file, "Equipments", "EQ");
+                row.UpdatedAt = DateTime.Now;
+                row.UpdatedByName = MarketplaceController.ActorName(db, userId);
+                db.SaveChanges();
+                return Ok(MarketplaceController.EquipmentDto(row));
+            }
+        }
+
+        System.Web.HttpPostedFile PostedImage()
+        {
+            var http = System.Web.HttpContext.Current == null ? null : System.Web.HttpContext.Current.Request;
+            var file = http == null ? null : http.Files["file"];
+            if (file == null || file.ContentLength <= 0)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Choose an image file");
+            if (file.ContentLength > 8 * 1024 * 1024)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Image must be 8 MB or smaller");
+            var type = file.ContentType ?? "";
+            if (!type.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "File must be an image");
+            return file;
         }
 
         [HttpPost, Route("contractors/{id:int}/favorite")]
