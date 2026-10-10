@@ -78,17 +78,21 @@ namespace Dashboards.Api
                 var vendor = db.VendorProfiles.FirstOrDefault(v => v.UserId == userId);
                 if (vendor == null)
                     throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Supplier profile is missing");
+                var title = body.Title.Trim();
+                if (title.Length > 100) title = title.Substring(0, 100);
                 var row = new Equipment
                 {
                     VendorId = vendor.Id,
-                    Name = body.Title.Trim(),
+                    Name = title,
                     Category = string.IsNullOrWhiteSpace(body.EquipmentCategoryCode) ? "OTHER" : body.EquipmentCategoryCode.Trim(),
                     Description = body.Description,
                     Location = body.Location,
                     RentalRatePerDay = body.RatePerDay,
                     IsAvailable = !string.Equals(body.AvailabilityStatus, "UNAVAILABLE", StringComparison.OrdinalIgnoreCase),
-                    Status = body.AvailabilityStatus,
-                    CreatedAt = DateTime.Now
+                    Status = string.IsNullOrWhiteSpace(body.AvailabilityStatus) ? "AVAILABLE" : body.AvailabilityStatus,
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now,
+                    UpdatedByName = ActorName(db, userId)
                 };
                 db.Equipments.Add(row);
                 db.SaveChanges();
@@ -151,10 +155,18 @@ namespace Dashboards.Api
         [HttpGet, Route("jobs")]
         public IHttpActionResult Jobs()
         {
-            using (var db = new ApplicationDbContext())
+            try
             {
-                var rows = db.Jobs.Include("Category").Where(j => j.DeletedAt == null && j.Status == "PUBLISHED").OrderByDescending(j => j.PublishedAt).Take(200).ToList();
-                return Ok(Page(rows.Select(JobDto)));
+                SupplierItemSchema.Ensure();
+                using (var db = new ApplicationDbContext())
+                {
+                    var rows = db.Jobs.Include("Category").Where(j => j.DeletedAt == null && j.Status == "PUBLISHED").OrderByDescending(j => j.PublishedAt).Take(200).ToList();
+                    return Ok(Page(rows.Select(JobDto)));
+                }
+            }
+            catch (Exception ex)
+            {
+                return Content(HttpStatusCode.InternalServerError, new { message = OfferingList.SafeMessage(ex), revision = "4" });
             }
         }
 
@@ -163,11 +175,12 @@ namespace Dashboards.Api
         {
             try
             {
-                return Ok(Page(OfferingList.Read(excludeGroup, size, null)));
+                var list = OfferingList.Read(excludeGroup, size, null);
+                return Ok(new { content = list, totalElements = list.Count, totalPages = 1, revision = "4" });
             }
             catch (Exception ex)
             {
-                return Content(HttpStatusCode.InternalServerError, new { message = OfferingList.SafeMessage(ex) });
+                return Content(HttpStatusCode.InternalServerError, new { message = OfferingList.SafeMessage(ex), revision = "4" });
             }
         }
 

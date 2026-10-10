@@ -273,6 +273,7 @@ namespace Dashboards.Api
                 var vendor = RequireVendor(db, userId);
                 var row = new SupplierOffering { VendorProfileId = vendor.Id, CreatedAt = DateTime.Now };
                 ApplyOffering(row, body);
+                row.UpdatedByName = MarketplaceController.ActorName(db, userId);
                 row.VendorProfile = vendor;
                 db.SupplierOfferings.Add(row);
                 db.SaveChanges();
