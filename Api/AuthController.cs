@@ -315,6 +315,7 @@ namespace Dashboards.Api
             var actor = string.IsNullOrWhiteSpace(user.FullName) ? user.Email : user.FullName.Trim();
             if (javaRole == "SUPPLIER")
             {
+                SupplierItemSchema.Ensure();
                 var company = FirstNonEmpty(body.CompanyName, name);
                 var profile = new VendorProfile
                 {

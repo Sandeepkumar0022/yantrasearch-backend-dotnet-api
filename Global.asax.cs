@@ -1,4 +1,5 @@
 using System.Web.Http;
+using Dashboards.Services;
 
 namespace Dashboards
 {
@@ -7,6 +8,7 @@ namespace Dashboards
         protected void Application_Start()
         {
             GlobalConfiguration.Configure(WebApiConfig.Register);
+            SupplierItemSchema.Ensure();
         }
     }
 }

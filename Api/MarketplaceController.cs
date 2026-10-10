@@ -161,22 +161,16 @@ namespace Dashboards.Api
         [HttpGet, Route("supplier-offerings")]
         public IHttpActionResult Offerings(string excludeGroup = null, int size = 200)
         {
-            try
+            SupplierItemSchema.Ensure();
+            using (var db = new ApplicationDbContext())
             {
-                using (var db = new ApplicationDbContext())
-                {
-                    var rows = db.SupplierOfferings.Include("VendorProfile").ToList();
-                    IEnumerable<SupplierOffering> q = rows.Where(o => o.DeletedAt == null);
-                    if (!string.IsNullOrWhiteSpace(excludeGroup))
-                        q = q.Where(o => !string.Equals(o.OfferingGroup, excludeGroup, StringComparison.OrdinalIgnoreCase));
-                    var take = Math.Min(Math.Max(size, 1), 500);
-                    var list = q.OrderByDescending(o => o.CreatedAt).Take(take).Select(OfferingDto).ToList();
-                    return Ok(Page(list));
-                }
-            }
-            catch
-            {
-                return Ok(Page(Enumerable.Empty<object>()));
+                var rows = db.SupplierOfferings.Include("VendorProfile").ToList();
+                IEnumerable<SupplierOffering> q = rows.Where(o => o.DeletedAt == null);
+                if (!string.IsNullOrWhiteSpace(excludeGroup))
+                    q = q.Where(o => !string.Equals(o.OfferingGroup, excludeGroup, StringComparison.OrdinalIgnoreCase));
+                var take = Math.Min(Math.Max(size, 1), 500);
+                var list = q.OrderByDescending(o => o.CreatedAt).Take(take).Select(OfferingDto).ToList();
+                return Ok(Page(list));
             }
         }
 

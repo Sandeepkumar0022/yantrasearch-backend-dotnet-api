@@ -248,6 +248,7 @@ namespace Dashboards.Api
         public IHttpActionResult MyOfferings()
         {
             var userId = Require("SUPPLIER", "ADMIN");
+            SupplierItemSchema.Ensure();
             using (var db = new ApplicationDbContext())
             {
                 var vendor = db.VendorProfiles.FirstOrDefault(v => v.UserId == userId);
