@@ -35,7 +35,7 @@ namespace Dashboards
 
     public class ApiRevisionHandler : DelegatingHandler
     {
-        public const string Revision = "4";
+        public const string Revision = "5";
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {

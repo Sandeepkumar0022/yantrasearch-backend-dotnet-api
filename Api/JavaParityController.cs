@@ -65,6 +65,18 @@ namespace Dashboards.Api
             public string ClientPhone { get; set; }
         }
 
+        [HttpGet, Route("equipment/{id:int}")]
+        public IHttpActionResult EquipmentOne(int id)
+        {
+            using (var db = new ApplicationDbContext())
+            {
+                var row = db.Equipments.Include("VendorProfile")
+                    .FirstOrDefault(e => e.Id == id && (e.Status == null || e.Status != "DELETED"));
+                if (row == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Equipment not found");
+                return Ok(MarketplaceController.EquipmentDto(row));
+            }
+        }
+
         [HttpPatch, Route("equipment/{id:int}")]
         public IHttpActionResult PatchEquipment(int id, EquipmentPatch body)
         {
@@ -123,6 +135,24 @@ namespace Dashboards.Api
                 row.UpdatedAt = DateTime.Now;
                 db.SaveChanges();
                 return Content(HttpStatusCode.Created, new { id = row.Id + "-" + body.SortOrder, url = MarketplaceController.PublicUrl(url), sortOrder = body.SortOrder });
+            }
+        }
+
+        [HttpGet, Route("jobs")]
+        public IHttpActionResult Jobs()
+        {
+            try
+            {
+                SupplierItemSchema.Ensure();
+                using (var db = new ApplicationDbContext())
+                {
+                    var rows = db.Jobs.Include("Category").Where(j => j.DeletedAt == null && j.Status == "PUBLISHED").OrderByDescending(j => j.PublishedAt).Take(200).ToList();
+                    return Ok(MarketplaceController.Page(rows.Select(MarketplaceController.JobDto)));
+                }
+            }
+            catch (Exception ex)
+            {
+                return Content(HttpStatusCode.InternalServerError, new { message = OfferingList.SafeMessage(ex), revision = "5" });
             }
         }
 
@@ -235,6 +265,20 @@ namespace Dashboards.Api
                 row.UpdatedAt = DateTime.Now;
                 db.SaveChanges();
                 return StatusCode(HttpStatusCode.NoContent);
+            }
+        }
+
+        [HttpGet, Route("supplier-offerings")]
+        public IHttpActionResult Offerings(string excludeGroup = null, int size = 200)
+        {
+            try
+            {
+                var list = OfferingList.Read(excludeGroup, size, null);
+                return Ok(new { content = list, totalElements = list.Count, totalPages = 1, revision = "5" });
+            }
+            catch (Exception ex)
+            {
+                return Content(HttpStatusCode.InternalServerError, new { message = OfferingList.SafeMessage(ex), revision = "5" });
             }
         }
 

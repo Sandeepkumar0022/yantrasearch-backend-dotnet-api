@@ -43,18 +43,6 @@ namespace Dashboards.Api
             }
         }
 
-        [HttpGet, Route("equipment/{id:int}")]
-        public IHttpActionResult EquipmentOne(int id)
-        {
-            using (var db = new ApplicationDbContext())
-            {
-                var row = db.Equipments.Include("VendorProfile")
-                    .FirstOrDefault(e => e.Id == id && (e.Status == null || e.Status != "DELETED"));
-                if (row == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Equipment not found");
-                return Ok(EquipmentDto(row));
-            }
-        }
-
         public class EquipmentBody
         {
             public string EquipmentCategoryCode { get; set; }
@@ -149,38 +137,6 @@ namespace Dashboards.Api
                 var experiences = db.EmployeeExperiences.Where(x => x.EmployeeId == e.EmployeeId).ToList();
                 var educations = db.EmployeeEducations.Where(x => x.EmployeeId == e.EmployeeId).ToList();
                 return Ok(JobSeekerPublic(e, photos, experiences, educations));
-            }
-        }
-
-        [HttpGet, Route("jobs")]
-        public IHttpActionResult Jobs()
-        {
-            try
-            {
-                SupplierItemSchema.Ensure();
-                using (var db = new ApplicationDbContext())
-                {
-                    var rows = db.Jobs.Include("Category").Where(j => j.DeletedAt == null && j.Status == "PUBLISHED").OrderByDescending(j => j.PublishedAt).Take(200).ToList();
-                    return Ok(Page(rows.Select(JobDto)));
-                }
-            }
-            catch (Exception ex)
-            {
-                return Content(HttpStatusCode.InternalServerError, new { message = OfferingList.SafeMessage(ex), revision = "4" });
-            }
-        }
-
-        [HttpGet, Route("supplier-offerings")]
-        public IHttpActionResult Offerings(string excludeGroup = null, int size = 200)
-        {
-            try
-            {
-                var list = OfferingList.Read(excludeGroup, size, null);
-                return Ok(new { content = list, totalElements = list.Count, totalPages = 1, revision = "4" });
-            }
-            catch (Exception ex)
-            {
-                return Content(HttpStatusCode.InternalServerError, new { message = OfferingList.SafeMessage(ex), revision = "4" });
             }
         }
 
