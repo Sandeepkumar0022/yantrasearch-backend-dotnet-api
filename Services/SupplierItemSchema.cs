@@ -13,12 +13,12 @@ namespace Dashboards.Services
         static readonly object Gate = new object();
         static bool ready;
 
-        public static void Ensure()
+        public static void Ensure(bool force = false)
         {
-            if (ready) return;
+            if (ready && !force) return;
             lock (Gate)
             {
-                if (ready) return;
+                if (ready && !force) return;
                 try
                 {
                     using (var db = new ApplicationDbContext())
@@ -35,7 +35,7 @@ namespace Dashboards.Services
                 }
                 catch
                 {
-                    // Leave ready false so a later request can retry. Do not take the site down.
+                    ready = false;
                 }
             }
         }

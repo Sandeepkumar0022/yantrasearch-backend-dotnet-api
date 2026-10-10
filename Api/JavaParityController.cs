@@ -248,16 +248,19 @@ namespace Dashboards.Api
         public IHttpActionResult MyOfferings()
         {
             var userId = Require("SUPPLIER", "ADMIN");
-            SupplierItemSchema.Ensure();
             using (var db = new ApplicationDbContext())
             {
                 var vendor = db.VendorProfiles.FirstOrDefault(v => v.UserId == userId);
-                var rows = vendor == null
-                    ? new List<SupplierOffering>()
-                    : db.SupplierOfferings.Include("VendorProfile")
-                        .Where(o => o.VendorProfileId == vendor.Id && o.DeletedAt == null)
-                        .OrderByDescending(o => o.CreatedAt).ToList();
-                return Ok(MarketplaceController.Page(rows.Select(MarketplaceController.OfferingDto)));
+                if (vendor == null)
+                    return Ok(MarketplaceController.Page(Enumerable.Empty<object>()));
+                try
+                {
+                    return Ok(MarketplaceController.Page(OfferingList.Read(null, 500, vendor.Id)));
+                }
+                catch (Exception ex)
+                {
+                    return Content(HttpStatusCode.InternalServerError, new { message = OfferingList.SafeMessage(ex) });
+                }
             }
         }
 
