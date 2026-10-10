@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Web.Http;
@@ -27,6 +28,21 @@ namespace Dashboards.Api
             public string City { get; set; }
             public string State { get; set; }
             public string Pincode { get; set; }
+            public string CompanyName { get; set; }
+            public string ServiceLocations { get; set; }
+            public string YearOfEstablishment { get; set; }
+            public List<SupplierOfferingInput> Offerings { get; set; }
+        }
+
+        public class SupplierOfferingInput
+        {
+            public string OfferingGroup { get; set; }
+            public string Category { get; set; }
+            public string CategoryOther { get; set; }
+            public string Subcategory { get; set; }
+            public string SubcategoryOther { get; set; }
+            public string Note { get; set; }
+            public string Title { get; set; }
         }
         public class RefreshBody { public string RefreshToken { get; set; } }
         public class ForgotBody { public string Email { get; set; } }
@@ -72,6 +88,7 @@ namespace Dashboards.Api
             }
 
             using (var db = new ApplicationDbContext())
+            using (var tx = db.Database.BeginTransaction())
             {
                 var users = new UserManager<ApplicationUser>(new UserStore<ApplicationUser>(db));
                 var email = body.Email.Trim();
@@ -104,6 +121,7 @@ namespace Dashboards.Api
                     UpdatedAt = DateTime.Now
                 });
                 db.SaveChanges();
+                tx.Commit();
                 try
                 {
                     RegistrationMail.Send(user.Email, user.FullName, user.PhoneNumber, RegistrationRole(javaRole));
@@ -257,6 +275,30 @@ namespace Dashboards.Api
             }
         }
 
+        static string FirstNonEmpty(params string[] values)
+        {
+            foreach (var value in values)
+                if (!string.IsNullOrWhiteSpace(value)) return value.Trim();
+            return "";
+        }
+
+        static string JoinParts(params string[] values)
+        {
+            return string.Join(", ", values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value.Trim()));
+        }
+
+        static string TrimOrNull(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        }
+
+        static string Cut(string value, int max)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            var trimmed = value.Trim();
+            return trimmed.Length <= max ? trimmed : trimmed.Substring(0, max);
+        }
+
         static void EnsureRole(ApplicationDbContext db, string name)
         {
             if (db.Roles.Any(r => r.Name == name)) return;
@@ -269,17 +311,72 @@ namespace Dashboards.Api
             var name = user.FullName;
             if (javaRole == "SUPPLIER")
             {
-                db.VendorProfiles.Add(new VendorProfile
+                var company = FirstNonEmpty(body.CompanyName, name);
+                var profile = new VendorProfile
                 {
                     UserId = user.Id,
                     UserType = UserType.Vendor,
-                    OwnerName = name,
-                    Email = user.Email,
-                    Mobile = body.Phone,
-                    CompanyName = name,
+                    OwnerName = Cut(name, 150),
+                    ContactPerson = Cut(name, 100),
+                    Email = Cut(user.Email, 100),
+                    Mobile = Cut(body.Phone, 20),
+                    CompanyName = Cut(company, 150),
+                    AddressLine1 = Cut(body.Address, 255),
+                    City = Cut(body.City, 100),
+                    State = Cut(body.State, 100),
+                    PinCode = Cut(body.Pincode, 10),
+                    ServiceLocations = TrimOrNull(body.ServiceLocations),
+                    YearOfEstablishment = Cut(body.YearOfEstablishment, 10),
                     IsActive = true,
+                    PaidPlan = "Free",
+                    Status = "Active",
                     CreatedAt = DateTime.Now
-                });
+                };
+                db.VendorProfiles.Add(profile);
+                db.SaveChanges();
+
+                var location = FirstNonEmpty(body.ServiceLocations, JoinParts(body.City, body.State));
+                var equipmentCount = 0;
+                foreach (var item in body.Offerings ?? new List<SupplierOfferingInput>())
+                {
+                    if (item == null || string.IsNullOrWhiteSpace(item.OfferingGroup)) continue;
+                    var group = item.OfferingGroup.Trim();
+                    var category = string.IsNullOrWhiteSpace(item.Category) ? "OTHER" : item.Category.Trim();
+                    var categoryOther = TrimOrNull(item.CategoryOther);
+                    var note = TrimOrNull(item.Note);
+                    var title = FirstNonEmpty(item.Title, categoryOther, category);
+                    if (string.Equals(group, "EQUIPMENT_AND_HEAVY_PLANT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        db.Equipments.Add(new Equipment
+                        {
+                            VendorId = profile.Id,
+                            Name = Cut(string.IsNullOrWhiteSpace(title) ? "Equipment" : title, 100),
+                            Category = Cut(category, 255),
+                            Description = note,
+                            Location = Cut(location, 255),
+                            IsAvailable = true,
+                            Status = "AVAILABLE",
+                            CreatedAt = DateTime.Now
+                        });
+                        equipmentCount++;
+                    }
+                    else
+                    {
+                        db.SupplierOfferings.Add(new SupplierOffering
+                        {
+                            VendorProfileId = profile.Id,
+                            OfferingGroup = Cut(group, 64),
+                            Category = Cut(category, 128),
+                            CategoryOther = Cut(categoryOther, 255),
+                            Subcategory = Cut(string.IsNullOrWhiteSpace(item.Subcategory) ? "LISTING" : item.Subcategory.Trim(), 128),
+                            SubcategoryOther = Cut(item.SubcategoryOther, 255),
+                            Note = note,
+                            CreatedAt = DateTime.Now,
+                            UpdatedAt = DateTime.Now
+                        });
+                    }
+                }
+                profile.TotalEquipments = equipmentCount;
             }
             else if (javaRole == "CONTRACTOR")
             {

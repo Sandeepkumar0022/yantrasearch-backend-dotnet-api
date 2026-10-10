@@ -235,16 +235,19 @@ namespace Dashboards.Api
                 };
                 db.ClientRequirements.Add(row);
                 db.SaveChanges();
+                var attachmentNames = new List<string>();
                 foreach (var file in uploads)
                 {
                     if (file.ContentLength > 8 * 1024 * 1024) continue;
                     var bytes = new byte[file.ContentLength];
                     file.InputStream.Position = 0;
                     file.InputStream.Read(bytes, 0, bytes.Length);
+                    var filename = System.IO.Path.GetFileName(string.IsNullOrWhiteSpace(file.FileName) ? "file" : file.FileName);
+                    attachmentNames.Add(filename);
                     db.ClientRequirementAttachments.Add(new ClientRequirementAttachment
                     {
                         RequirementId = row.Id,
-                        Filename = System.IO.Path.GetFileName(string.IsNullOrWhiteSpace(file.FileName) ? "file" : file.FileName),
+                        Filename = filename,
                         ContentType = file.ContentType,
                         SizeBytes = file.ContentLength,
                         Data = bytes,
@@ -252,6 +255,31 @@ namespace Dashboards.Api
                     });
                 }
                 if (uploads.Count > 0) db.SaveChanges();
+                try
+                {
+                    var profile = user == null ? null : db.ClientProfiles.FirstOrDefault(p => p.UserId == user.Id);
+                    var phone = user != null && !string.IsNullOrWhiteSpace(user.PhoneNumber)
+                        ? user.PhoneNumber
+                        : (profile == null ? null : profile.Phone);
+                    var addressParts = profile == null
+                        ? new string[0]
+                        : new[] { profile.AddressLine1, profile.City, profile.State, profile.PinCode }
+                            .Where(s => !string.IsNullOrWhiteSpace(s))
+                            .ToArray();
+                    RequirementMail.Send(
+                        row.ClientName,
+                        user == null ? null : user.Email,
+                        phone,
+                        addressParts.Length == 0 ? null : string.Join(", ", addressParts),
+                        row.Title,
+                        row.Location,
+                        row.Budget,
+                        row.Description,
+                        attachmentNames);
+                }
+                catch
+                {
+                }
                 return Content(HttpStatusCode.Created, RequirementDto(db, row));
             }
         }
