@@ -77,7 +77,8 @@ namespace Dashboards.Services
             }
             var files = names.Count == 0 ? "None" : string.Join(", ", names);
             var text = HttpUtility.HtmlEncode(description ?? "").Replace("\n", "<br/>");
-            return "<p>A client posted a new requirement on YantraSearch.</p>"
+            return "<p><strong>Mail type:</strong> Client requirement</p>"
+                + "<p>A client posted a new requirement on YantraSearch. This is not a listing enquiry.</p>"
                 + Line("Client", name)
                 + Line("Email", email)
                 + Line("Phone", phone)

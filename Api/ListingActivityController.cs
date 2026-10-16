@@ -79,6 +79,16 @@ namespace Dashboards.Api
                 };
                 db.ListingActivities.Add(activity);
                 db.SaveChanges();
+                if (kind == "enquiry")
+                {
+                    try
+                    {
+                        ListingEnquiryMail.Send(EnquiryDetails(db, userId, type, listingId, activity.ListingTitle, note));
+                    }
+                    catch
+                    {
+                    }
+                }
                 return Ok(new { saved = true, favourited = kind == "favourite" });
             }
         }
@@ -365,6 +375,93 @@ namespace Dashboards.Api
                 note = row.Note,
                 createdAt = row.CreatedAt
             };
+        }
+
+        static ListingEnquiryMail.EnquiryDetails EnquiryDetails(
+            ApplicationDbContext db,
+            string clientUserId,
+            string type,
+            string listingId,
+            string title,
+            string message)
+        {
+            var client = db.Users.Find(clientUserId);
+            var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == clientUserId);
+            var address = profile == null
+                ? null
+                : FirstText(string.Join(", ", new[] { profile.AddressLine1, profile.City, profile.State, profile.PinCode }
+                    .Where(part => !string.IsNullOrWhiteSpace(part))));
+            var details = new ListingEnquiryMail.EnquiryDetails
+            {
+                ItemType = ItemTypeLabel(type),
+                ItemTitle = title,
+                ListingId = listingId,
+                ClientName = client == null ? null : FirstText(client.FullName, profile == null ? null : profile.FullName, client.Email),
+                ClientCompany = profile == null ? null : profile.CompanyName,
+                ClientEmail = client == null ? null : client.Email,
+                ClientPhone = FirstText(client == null ? null : client.PhoneNumber, profile == null ? null : profile.Phone),
+                ClientAddress = address,
+                Message = message
+            };
+            int id;
+            int.TryParse(listingId, out id);
+            if (type == "equipment")
+            {
+                var row = db.Equipments.Include("VendorProfile").FirstOrDefault(e => e.Id == id);
+                if (string.IsNullOrWhiteSpace(details.ItemTitle) && row != null) details.ItemTitle = row.Name;
+                FillVendor(details, row == null ? null : row.VendorProfile, "equipment");
+            }
+            else if (type == "material")
+            {
+                var row = db.SupplierOfferings.Include("VendorProfile").FirstOrDefault(o => o.Id == id);
+                FillVendor(details, row == null ? null : row.VendorProfile, "materials");
+            }
+            else if (type == "contractor")
+            {
+                var row = db.ContractorProfiles.Find(id);
+                if (row != null)
+                {
+                    details.VendorName = FirstText(row.CompanyName, row.OwnerName);
+                    details.VendorType = "Contractor";
+                    details.VendorEmail = row.Email;
+                    details.VendorPhone = row.Mobile;
+                }
+            }
+            else
+            {
+                var row = db.EmployeeProfiles.Include("User").FirstOrDefault(e => e.EmployeeId == id);
+                if (row != null)
+                {
+                    details.VendorName = FirstText(row.FullName, row.User == null ? null : row.User.FullName);
+                    details.VendorType = "Job seeker";
+                    details.VendorEmail = row.User == null ? null : row.User.Email;
+                    details.VendorPhone = row.User == null ? null : row.User.PhoneNumber;
+                }
+            }
+            return details;
+        }
+
+        static void FillVendor(ListingEnquiryMail.EnquiryDetails details, VendorProfile profile, string fallbackType)
+        {
+            if (profile == null)
+            {
+                details.VendorType = VendorTypeLabel(fallbackType);
+                return;
+            }
+            details.VendorName = FirstText(profile.CompanyName, profile.OwnerName);
+            details.VendorEmail = profile.Email;
+            details.VendorPhone = profile.Mobile;
+            var kind = (profile.SupplierKind ?? "").Trim().ToLowerInvariant();
+            details.VendorType = VendorTypeLabel(kind == "equipment" || kind == "materials" ? kind : fallbackType);
+        }
+
+        static string ItemTypeLabel(string type)
+        {
+            if (type == "equipment") return "Equipment";
+            if (type == "material") return "Material";
+            if (type == "contractor") return "Contractor";
+            if (type == "jobseeker") return "Job seeker";
+            return type;
         }
 
         static bool TryOwner(ApplicationDbContext db, string type, string listingId, out string ownerId)
