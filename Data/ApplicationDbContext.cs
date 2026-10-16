@@ -74,6 +74,7 @@ namespace Dashboards.Data
         public DbSet<UserAttachment> UserAttachments { get; set; }
         public DbSet<AnalyticsSession> AnalyticsSessions { get; set; }
         public DbSet<AnalyticsPageEngagement> AnalyticsPageEngagements { get; set; }
+        public DbSet<ListingActivity> ListingActivities { get; set; }
 
         // Factory method
         public static ApplicationDbContext Create()
