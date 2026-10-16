@@ -100,14 +100,22 @@ namespace Dashboards.Api
         }
 
         [HttpGet, Route("inbox")]
-        public IHttpActionResult Inbox()
+        public IHttpActionResult Inbox(int sinceDays = 0, string kind = null)
         {
             var userId = Require("SUPPLIER", "CONTRACTOR", "JOB_SEEKER");
             ListingActivitySchema.Ensure();
+            var selectedKind = NormalizeKind(kind);
             using (var db = new ApplicationDbContext())
             {
-                var rows = db.ListingActivities.Where(a => a.OwnerUserId == userId)
-                    .OrderByDescending(a => a.CreatedAt).Take(2000).ToList();
+                var query = db.ListingActivities.Where(a => a.OwnerUserId == userId);
+                if (sinceDays > 0)
+                {
+                    var since = DateTime.Now.AddDays(-sinceDays);
+                    query = query.Where(a => a.CreatedAt >= since);
+                }
+                if (selectedKind != null)
+                    query = query.Where(a => a.Kind == selectedKind);
+                var rows = query.OrderByDescending(a => a.CreatedAt).Take(2000).ToList();
                 return Ok(new
                 {
                     totals = Totals(rows),
