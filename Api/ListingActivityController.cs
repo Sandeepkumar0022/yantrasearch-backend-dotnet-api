@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Web.Http;
@@ -133,32 +134,190 @@ namespace Dashboards.Api
             using (var db = new ApplicationDbContext())
             {
                 var rows = db.ListingActivities.OrderByDescending(a => a.CreatedAt).Take(2000).ToList();
-                var ids = rows.Select(a => a.ClientUserId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
-                var users = db.Users.Where(u => ids.Contains(u.Id)).ToList().ToDictionary(u => u.Id);
+                var equipmentIds = IdsOf(rows, "equipment");
+                var materialIds = IdsOf(rows, "material");
+                var contractorIds = IdsOf(rows, "contractor");
+                var employeeIds = IdsOf(rows, "jobseeker");
+                var equipments = equipmentIds.Count == 0
+                    ? new Dictionary<int, Equipment>()
+                    : db.Equipments.Include("VendorProfile").Where(e => equipmentIds.Contains(e.Id)).ToList().ToDictionary(e => e.Id);
+                var offerings = materialIds.Count == 0
+                    ? new Dictionary<int, SupplierOffering>()
+                    : db.SupplierOfferings.Include("VendorProfile").Where(o => materialIds.Contains(o.Id)).ToList().ToDictionary(o => o.Id);
+                var contractors = contractorIds.Count == 0
+                    ? new Dictionary<int, ContractorProfile>()
+                    : db.ContractorProfiles.Include("User").Where(c => contractorIds.Contains(c.Id)).ToList().ToDictionary(c => c.Id);
+                var employees = employeeIds.Count == 0
+                    ? new Dictionary<int, EmployeeProfile>()
+                    : db.EmployeeProfiles.Include("User").Where(e => employeeIds.Contains(e.EmployeeId)).ToList().ToDictionary(e => e.EmployeeId);
+
+                var userIds = rows.Select(a => a.ClientUserId).Concat(rows.Select(a => a.OwnerUserId))
+                    .Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+                var users = userIds.Count == 0
+                    ? new Dictionary<string, ApplicationUser>()
+                    : db.Users.Where(u => userIds.Contains(u.Id)).ToList().ToDictionary(u => u.Id);
+                var photos = userIds.Count == 0
+                    ? new Dictionary<string, string>()
+                    : db.UserAttachments
+                        .Where(a => userIds.Contains(a.UserId) && (a.AttachmentType == "PROFILE_PHOTO" || a.AttachmentType == "LOGO"))
+                        .OrderByDescending(a => a.CreatedAt)
+                        .ToList()
+                        .GroupBy(a => a.UserId)
+                        .ToDictionary(g => g.Key, g => ComFiles.AttachmentUrl(g.First().StoragePath));
+
                 return Ok(new
                 {
                     totals = Totals(rows),
-                    listings = ListingTotals(rows),
-                    content = rows.Take(200).Select(row =>
-                    {
-                        ApplicationUser user = null;
-                        if (!string.IsNullOrEmpty(row.ClientUserId)) users.TryGetValue(row.ClientUserId, out user);
-                        return new
-                        {
-                            id = row.Id.ToString(),
-                            listingType = row.ListingType,
-                            listingId = row.ListingId,
-                            listingTitle = row.ListingTitle,
-                            kind = row.Kind,
-                            note = row.Note,
-                            createdAt = row.CreatedAt,
-                            clientName = user == null ? null : user.FullName,
-                            clientEmail = user == null ? null : user.Email,
-                            clientPhone = user == null ? null : user.PhoneNumber
-                        };
-                    })
+                    content = rows.Select(row => AdminRow(row, users, photos, equipments, offerings, contractors, employees))
                 });
             }
+        }
+
+        static object AdminRow(
+            ListingActivity row,
+            Dictionary<string, ApplicationUser> users,
+            Dictionary<string, string> photos,
+            Dictionary<int, Equipment> equipments,
+            Dictionary<int, SupplierOffering> offerings,
+            Dictionary<int, ContractorProfile> contractors,
+            Dictionary<int, EmployeeProfile> employees)
+        {
+            ApplicationUser client = null;
+            if (!string.IsNullOrEmpty(row.ClientUserId)) users.TryGetValue(row.ClientUserId, out client);
+            int listingId;
+            int.TryParse(row.ListingId, out listingId);
+            string image = null;
+            string vendorUserId = row.OwnerUserId;
+            string vendorName = null;
+            string vendorType = null;
+            if (row.ListingType == "equipment")
+            {
+                Equipment equipment;
+                if (equipments.TryGetValue(listingId, out equipment))
+                {
+                    image = ItemImage(FirstText(equipment.Image1Url, equipment.ThumbnailUrl), "Equipments");
+                    ApplyVendor(equipment.VendorProfile, ref vendorUserId, ref vendorName, ref vendorType, "equipment");
+                }
+            }
+            else if (row.ListingType == "material")
+            {
+                SupplierOffering offering;
+                if (offerings.TryGetValue(listingId, out offering))
+                {
+                    image = ItemImage(offering.ImageUrl, "Offerings");
+                    ApplyVendor(offering.VendorProfile, ref vendorUserId, ref vendorName, ref vendorType, "materials");
+                }
+            }
+            else if (row.ListingType == "contractor")
+            {
+                ContractorProfile contractor;
+                if (contractors.TryGetValue(listingId, out contractor))
+                {
+                    vendorType = "contractor";
+                    vendorUserId = string.IsNullOrEmpty(contractor.UserId) ? vendorUserId : contractor.UserId;
+                    vendorName = FirstText(contractor.CompanyName, contractor.OwnerName);
+                    image = PersonImage(contractor.User, vendorUserId, photos);
+                }
+            }
+            else
+            {
+                EmployeeProfile employee;
+                if (employees.TryGetValue(listingId, out employee))
+                {
+                    vendorType = "jobseeker";
+                    vendorUserId = string.IsNullOrEmpty(employee.UserId) ? vendorUserId : employee.UserId;
+                    vendorName = FirstText(employee.FullName, employee.User == null ? null : employee.User.FullName);
+                    image = PersonImage(employee.User, vendorUserId, photos);
+                }
+            }
+            if (string.IsNullOrEmpty(vendorName) && !string.IsNullOrEmpty(vendorUserId))
+            {
+                ApplicationUser owner;
+                if (users.TryGetValue(vendorUserId, out owner))
+                    vendorName = FirstText(owner.FullName, owner.Email);
+            }
+            if (string.IsNullOrEmpty(vendorType))
+                vendorType = row.ListingType == "material" ? "materials" : row.ListingType;
+            return new
+            {
+                id = row.Id.ToString(),
+                listingType = row.ListingType,
+                listingId = row.ListingId,
+                listingTitle = row.ListingTitle,
+                listingImage = string.IsNullOrEmpty(image) ? null : image,
+                kind = row.Kind,
+                note = row.Note,
+                createdAt = row.CreatedAt,
+                clientUserId = row.ClientUserId,
+                clientName = client == null ? null : client.FullName,
+                clientEmail = client == null ? null : client.Email,
+                clientPhone = client == null ? null : client.PhoneNumber,
+                vendorUserId,
+                vendorName,
+                vendorType,
+                vendorTypeLabel = VendorTypeLabel(vendorType)
+            };
+        }
+
+        static void ApplyVendor(VendorProfile profile, ref string userId, ref string name, ref string type, string fallbackType)
+        {
+            if (profile == null)
+            {
+                type = fallbackType;
+                return;
+            }
+            if (!string.IsNullOrEmpty(profile.UserId)) userId = profile.UserId;
+            name = FirstText(profile.CompanyName, profile.OwnerName);
+            var kind = (profile.SupplierKind ?? "").Trim().ToLowerInvariant();
+            type = kind == "equipment" || kind == "materials" ? kind : fallbackType;
+        }
+
+        static string PersonImage(ApplicationUser user, string userId, Dictionary<string, string> photos)
+        {
+            var photo = ComFiles.UserPhoto(user);
+            if (!string.IsNullOrEmpty(photo)) return photo;
+            string stored;
+            if (!string.IsNullOrEmpty(userId) && photos.TryGetValue(userId, out stored) && !string.IsNullOrEmpty(stored))
+                return stored;
+            return null;
+        }
+
+        static string ItemImage(string raw, string folder)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            if (raw.StartsWith("http", StringComparison.OrdinalIgnoreCase) || raw.StartsWith("/"))
+                return ComFiles.PublicUrl(raw);
+            return ComFiles.PublicUrl("/Uploads/" + folder + "/" + raw.TrimStart('/'));
+        }
+
+        static string VendorTypeLabel(string type)
+        {
+            if (type == "equipment") return "Equipment supplier";
+            if (type == "materials") return "Material supplier";
+            if (type == "contractor") return "Contractor";
+            if (type == "jobseeker") return "Job seeker";
+            return "Supplier";
+        }
+
+        static string FirstText(params string[] values)
+        {
+            if (values == null) return null;
+            foreach (var value in values)
+                if (!string.IsNullOrWhiteSpace(value)) return value.Trim();
+            return null;
+        }
+
+        static List<int> IdsOf(List<ListingActivity> rows, string type)
+        {
+            return rows.Where(a => string.Equals(a.ListingType, type, StringComparison.OrdinalIgnoreCase))
+                .Select(a =>
+                {
+                    int id;
+                    return int.TryParse(a.ListingId, out id) ? id : 0;
+                })
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList();
         }
 
         static object Totals(System.Collections.Generic.IEnumerable<ListingActivity> rows)
