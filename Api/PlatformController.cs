@@ -74,6 +74,7 @@ namespace Dashboards.Api
                 var plan = db.MembershipPlans.FirstOrDefault(p => p.Code == code);
                 if (plan == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Unknown plan");
                 plan.PriceAmount = body.PriceAmount;
+                plan.Currency = "INR";
                 plan.UpdatedAt = DateTime.Now;
                 db.SaveChanges();
                 return Ok(new { success = true, code = plan.Code, priceAmount = plan.PriceAmount });

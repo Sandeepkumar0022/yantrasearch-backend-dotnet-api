@@ -55,7 +55,12 @@ namespace Dashboards.Services
             var payeeName = _settings.GetOrDefault("upi.payeeName", "YantraSearch");
             var payeeMobile = _settings.GetOrDefault("upi.payeeMobile");
             var amount = plan.PriceAmount.Value;
-            var currency = string.IsNullOrWhiteSpace(plan.Currency) ? "INR" : plan.Currency;
+            const string currency = "INR";
+            if (!string.Equals(plan.Currency, currency, StringComparison.OrdinalIgnoreCase))
+            {
+                plan.Currency = currency;
+                plan.UpdatedAt = DateTime.Now;
+            }
             var note = "YantraSearch " + plan.Code + " " + Guid.NewGuid().ToString("N").Substring(0, 8);
             var payload = "upi://pay?pa=" + Uri.EscapeDataString(vpa)
                 + "&pn=" + Uri.EscapeDataString(string.IsNullOrWhiteSpace(payeeName) ? "YantraSearch" : payeeName)
