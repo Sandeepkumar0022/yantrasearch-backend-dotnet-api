@@ -297,8 +297,13 @@ namespace Dashboards.Api
             using (var db = new ApplicationDbContext())
             {
                 var q = db.ClientRequirements.AsQueryable();
-                if (!admin) q = q.Where(r => r.ClientUserId == userId);
+                var supplier = CurrentUser.Is(this, "SUPPLIER");
+                if (!admin && !supplier) q = q.Where(r => r.ClientUserId == userId);
                 var rows = q.OrderByDescending(r => r.CreatedAt).Take(200).ToList();
+                if (supplier && !admin)
+                {
+                    return Ok(MarketplaceController.Page(rows.Select(RequirementPublicDto)));
+                }
                 var ids = rows.Select(r => r.ClientUserId).Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
                 var users = db.Users.Where(u => ids.Contains(u.Id)).ToList().ToDictionary(u => u.Id);
                 var profiles = db.ClientProfiles.Where(p => ids.Contains(p.UserId)).ToList()
@@ -660,6 +665,20 @@ namespace Dashboards.Api
                 payeeName = MembershipPaymentService.ReadMetadata(order, "payeeName"),
                 qrPayload = MembershipPaymentService.ReadMetadata(order, "qrPayload"),
                 userId = order.UserId
+            };
+        }
+
+        static object RequirementPublicDto(ClientRequirement row)
+        {
+            return new
+            {
+                id = row.Id.ToString(),
+                title = row.Title,
+                description = row.Description,
+                location = row.Location,
+                budget = row.Budget,
+                status = row.Status == "completed" ? "closed" : row.Status,
+                createdAt = row.CreatedAt
             };
         }
 

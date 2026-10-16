@@ -315,6 +315,8 @@ namespace Dashboards.Api
             using (var db = new ApplicationDbContext())
             {
                 var vendor = RequireVendor(db, userId);
+                if (CurrentUser.Is(this, "SUPPLIER") && string.Equals(vendor.SupplierKind, "equipment", StringComparison.OrdinalIgnoreCase))
+                    throw ApiResults.Problem(Request, HttpStatusCode.Forbidden, "Equipment suppliers cannot add material items");
                 var row = new SupplierOffering { VendorProfileId = vendor.Id, CreatedAt = DateTime.Now };
                 ApplyOffering(row, body);
                 row.UpdatedByName = MarketplaceController.ActorName(db, userId);

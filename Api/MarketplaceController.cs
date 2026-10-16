@@ -66,6 +66,8 @@ namespace Dashboards.Api
                 var vendor = db.VendorProfiles.FirstOrDefault(v => v.UserId == userId);
                 if (vendor == null)
                     throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Supplier profile is missing");
+                if (CurrentUser.Is(this, "SUPPLIER") && string.Equals(vendor.SupplierKind, "materials", StringComparison.OrdinalIgnoreCase))
+                    throw ApiResults.Problem(Request, HttpStatusCode.Forbidden, "Material suppliers cannot add equipment");
                 var title = body.Title.Trim();
                 if (title.Length > 100) title = title.Substring(0, 100);
                 var row = new Equipment

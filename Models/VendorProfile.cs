@@ -95,6 +95,10 @@ namespace Dashboards.Models
         [StringLength(100)]
         public string Status { get; set; } //Active, Inactive, Blocked etc.
 
+        /// <summary>equipment or materials. Empty for accounts created before the split.</summary>
+        [StringLength(32)]
+        public string SupplierKind { get; set; }
+
         /// <summary>Total number of equipments (e.g. from equipment supplier registration).</summary>
         public int? TotalEquipments { get; set; }
 

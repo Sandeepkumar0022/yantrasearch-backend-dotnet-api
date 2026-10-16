@@ -27,6 +27,7 @@ namespace Dashboards.Services
                         AddColumn(db, "SupplierOffering", "ImageUrl", "VARCHAR(512) NULL");
                         AddColumn(db, "SupplierOffering", "UpdatedByName", "VARCHAR(150) NULL");
                         AddColumn(db, "Equipment", "UpdatedByName", "VARCHAR(150) NULL");
+                        AddColumn(db, "VendorProfile", "SupplierKind", "VARCHAR(32) NULL");
                         try { CreateJobTables(db); } catch { }
                         db.Database.SqlQuery<string>("SELECT ImageUrl FROM SupplierOffering WHERE 1 = 0").ToList();
                         db.Database.SqlQuery<string>("SELECT UpdatedByName FROM SupplierOffering WHERE 1 = 0").ToList();

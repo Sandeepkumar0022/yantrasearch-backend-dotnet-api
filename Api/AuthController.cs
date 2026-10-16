@@ -31,6 +31,7 @@ namespace Dashboards.Api
             public string CompanyName { get; set; }
             public string ServiceLocations { get; set; }
             public string YearOfEstablishment { get; set; }
+            public string SupplierKind { get; set; }
             public List<SupplierOfferingInput> Offerings { get; set; }
         }
 
@@ -124,7 +125,7 @@ namespace Dashboards.Api
                 tx.Commit();
                 try
                 {
-                    RegistrationMail.Send(user.Email, user.FullName, user.PhoneNumber, RegistrationRole(javaRole));
+                    RegistrationMail.Send(user.Email, user.FullName, user.PhoneNumber, RegistrationRole(javaRole, NormalizeSupplierKind(body.SupplierKind)));
                 }
                 catch
                 {
@@ -216,6 +217,29 @@ namespace Dashboards.Api
             public string Name { get; set; }
             public string Phone { get; set; }
             public string CompanyName { get; set; }
+        }
+
+        [HttpGet, Route("account")]
+        public IHttpActionResult Account()
+        {
+            var userId = CurrentUser.Id(this);
+            if (string.IsNullOrEmpty(userId))
+                throw ApiResults.Problem(Request, HttpStatusCode.Unauthorized, "Sign in required");
+            using (var db = new ApplicationDbContext())
+            {
+                var user = db.Users.Find(userId);
+                if (user == null)
+                    throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "User not found");
+                var role = JavaRole(db, user);
+                string supplierKind = null;
+                if (role == "SUPPLIER")
+                {
+                    SupplierItemSchema.Ensure();
+                    var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
+                    supplierKind = profile == null ? null : profile.SupplierKind;
+                }
+                return Ok(new { role, supplierKind });
+            }
         }
 
         [HttpPatch, Route("profile")]
@@ -366,11 +390,18 @@ namespace Dashboards.Api
             }
         }
 
-        static string RegistrationRole(string javaRole)
+        static string NormalizeSupplierKind(string value)
+        {
+            var kind = (value ?? "").Trim().ToLowerInvariant();
+            if (kind == "equipment" || kind == "materials") return kind;
+            return null;
+        }
+
+        static string RegistrationRole(string javaRole, string supplierKind)
         {
             switch (javaRole)
             {
-                case "SUPPLIER": return "Equipment Supplier";
+                case "SUPPLIER": return supplierKind == "equipment" ? "Equipment Supplier" : "Supplier";
                 case "CONTRACTOR": return "Project Contractor";
                 case "JOB_SEEKER": return "Construction Employee";
                 default: return "Business Client";
@@ -432,6 +463,7 @@ namespace Dashboards.Api
                     PinCode = Cut(body.Pincode, 10),
                     ServiceLocations = TrimOrNull(body.ServiceLocations),
                     YearOfEstablishment = Cut(body.YearOfEstablishment, 10),
+                    SupplierKind = NormalizeSupplierKind(body.SupplierKind),
                     IsActive = true,
                     PaidPlan = "Free",
                     Status = "Active",
@@ -452,6 +484,8 @@ namespace Dashboards.Api
                     var title = FirstNonEmpty(item.Title, categoryOther, category);
                     if (string.Equals(group, "EQUIPMENT_AND_HEAVY_PLANT", StringComparison.OrdinalIgnoreCase))
                     {
+                        if (string.Equals(profile.SupplierKind, "materials", StringComparison.OrdinalIgnoreCase))
+                            continue;
                         var equipment = new Equipment
                         {
                             VendorId = profile.Id,
@@ -472,6 +506,8 @@ namespace Dashboards.Api
                     }
                     else
                     {
+                        if (string.Equals(profile.SupplierKind, "equipment", StringComparison.OrdinalIgnoreCase))
+                            continue;
                         var offering = new SupplierOffering
                         {
                             VendorProfileId = profile.Id,
