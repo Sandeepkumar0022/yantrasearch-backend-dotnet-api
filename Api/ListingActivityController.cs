@@ -100,12 +100,16 @@ namespace Dashboards.Api
             ListingActivitySchema.Ensure();
             using (var db = new ApplicationDbContext())
             {
-                var rows = db.ListingActivities.Where(a => a.ClientUserId == userId)
-                    .OrderByDescending(a => a.CreatedAt).Take(300).ToList();
+                var rows = db.ListingActivities
+                    .Where(a => a.ClientUserId == userId && (a.Kind == "favourite" || a.Kind == "enquiry"))
+                    .OrderByDescending(a => a.CreatedAt)
+                    .Take(300)
+                    .ToList();
+                var content = Enrich(db, rows);
                 return Ok(new
                 {
-                    favourites = rows.Where(a => a.Kind == "favourite").Select(PublicRow),
-                    content = rows.Select(PublicRow)
+                    favourites = content.Where(row => row.Kind == "favourite"),
+                    content
                 });
             }
         }
@@ -144,46 +148,49 @@ namespace Dashboards.Api
             using (var db = new ApplicationDbContext())
             {
                 var rows = db.ListingActivities.OrderByDescending(a => a.CreatedAt).Take(2000).ToList();
-                var equipmentIds = IdsOf(rows, "equipment");
-                var materialIds = IdsOf(rows, "material");
-                var contractorIds = IdsOf(rows, "contractor");
-                var employeeIds = IdsOf(rows, "jobseeker");
-                var equipments = equipmentIds.Count == 0
-                    ? new Dictionary<int, Equipment>()
-                    : db.Equipments.Include("VendorProfile").Where(e => equipmentIds.Contains(e.Id)).ToList().ToDictionary(e => e.Id);
-                var offerings = materialIds.Count == 0
-                    ? new Dictionary<int, SupplierOffering>()
-                    : db.SupplierOfferings.Include("VendorProfile").Where(o => materialIds.Contains(o.Id)).ToList().ToDictionary(o => o.Id);
-                var contractors = contractorIds.Count == 0
-                    ? new Dictionary<int, ContractorProfile>()
-                    : db.ContractorProfiles.Include("User").Where(c => contractorIds.Contains(c.Id)).ToList().ToDictionary(c => c.Id);
-                var employees = employeeIds.Count == 0
-                    ? new Dictionary<int, EmployeeProfile>()
-                    : db.EmployeeProfiles.Include("User").Where(e => employeeIds.Contains(e.EmployeeId)).ToList().ToDictionary(e => e.EmployeeId);
-
-                var userIds = rows.Select(a => a.ClientUserId).Concat(rows.Select(a => a.OwnerUserId))
-                    .Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
-                var users = userIds.Count == 0
-                    ? new Dictionary<string, ApplicationUser>()
-                    : db.Users.Where(u => userIds.Contains(u.Id)).ToList().ToDictionary(u => u.Id);
-                var photos = userIds.Count == 0
-                    ? new Dictionary<string, string>()
-                    : db.UserAttachments
-                        .Where(a => userIds.Contains(a.UserId) && (a.AttachmentType == "PROFILE_PHOTO" || a.AttachmentType == "LOGO"))
-                        .OrderByDescending(a => a.CreatedAt)
-                        .ToList()
-                        .GroupBy(a => a.UserId)
-                        .ToDictionary(g => g.Key, g => ComFiles.AttachmentUrl(g.First().StoragePath));
-
                 return Ok(new
                 {
                     totals = Totals(rows),
-                    content = rows.Select(row => AdminRow(row, users, photos, equipments, offerings, contractors, employees))
+                    content = Enrich(db, rows)
                 });
             }
         }
 
-        static object AdminRow(
+        static List<ActivityView> Enrich(ApplicationDbContext db, List<ListingActivity> rows)
+        {
+            var equipmentIds = IdsOf(rows, "equipment");
+            var materialIds = IdsOf(rows, "material");
+            var contractorIds = IdsOf(rows, "contractor");
+            var employeeIds = IdsOf(rows, "jobseeker");
+            var equipments = equipmentIds.Count == 0
+                ? new Dictionary<int, Equipment>()
+                : db.Equipments.Include("VendorProfile").Where(e => equipmentIds.Contains(e.Id)).ToList().ToDictionary(e => e.Id);
+            var offerings = materialIds.Count == 0
+                ? new Dictionary<int, SupplierOffering>()
+                : db.SupplierOfferings.Include("VendorProfile").Where(o => materialIds.Contains(o.Id)).ToList().ToDictionary(o => o.Id);
+            var contractors = contractorIds.Count == 0
+                ? new Dictionary<int, ContractorProfile>()
+                : db.ContractorProfiles.Include("User").Where(c => contractorIds.Contains(c.Id)).ToList().ToDictionary(c => c.Id);
+            var employees = employeeIds.Count == 0
+                ? new Dictionary<int, EmployeeProfile>()
+                : db.EmployeeProfiles.Include("User").Where(e => employeeIds.Contains(e.EmployeeId)).ToList().ToDictionary(e => e.EmployeeId);
+            var userIds = rows.Select(a => a.ClientUserId).Concat(rows.Select(a => a.OwnerUserId))
+                .Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+            var users = userIds.Count == 0
+                ? new Dictionary<string, ApplicationUser>()
+                : db.Users.Where(u => userIds.Contains(u.Id)).ToList().ToDictionary(u => u.Id);
+            var photos = userIds.Count == 0
+                ? new Dictionary<string, string>()
+                : db.UserAttachments
+                    .Where(a => userIds.Contains(a.UserId) && (a.AttachmentType == "PROFILE_PHOTO" || a.AttachmentType == "LOGO"))
+                    .OrderByDescending(a => a.CreatedAt)
+                    .ToList()
+                    .GroupBy(a => a.UserId)
+                    .ToDictionary(g => g.Key, g => ComFiles.AttachmentUrl(g.First().StoragePath));
+            return rows.Select(row => AdminRow(row, users, photos, equipments, offerings, contractors, employees)).ToList();
+        }
+
+        static ActivityView AdminRow(
             ListingActivity row,
             Dictionary<string, ApplicationUser> users,
             Dictionary<string, string> photos,
@@ -248,25 +255,45 @@ namespace Dashboards.Api
             }
             if (string.IsNullOrEmpty(vendorType))
                 vendorType = row.ListingType == "material" ? "materials" : row.ListingType;
-            return new
+            return new ActivityView
             {
-                id = row.Id.ToString(),
-                listingType = row.ListingType,
-                listingId = row.ListingId,
-                listingTitle = row.ListingTitle,
-                listingImage = string.IsNullOrEmpty(image) ? null : image,
-                kind = row.Kind,
-                note = row.Note,
-                createdAt = row.CreatedAt,
-                clientUserId = row.ClientUserId,
-                clientName = client == null ? null : client.FullName,
-                clientEmail = client == null ? null : client.Email,
-                clientPhone = client == null ? null : client.PhoneNumber,
-                vendorUserId,
-                vendorName,
-                vendorType,
-                vendorTypeLabel = VendorTypeLabel(vendorType)
+                Id = row.Id.ToString(),
+                ListingType = row.ListingType,
+                ListingId = row.ListingId,
+                ListingTitle = row.ListingTitle,
+                ListingImage = string.IsNullOrEmpty(image) ? null : image,
+                Kind = row.Kind,
+                Note = row.Note,
+                CreatedAt = row.CreatedAt,
+                ClientUserId = row.ClientUserId,
+                ClientName = client == null ? null : client.FullName,
+                ClientEmail = client == null ? null : client.Email,
+                ClientPhone = client == null ? null : client.PhoneNumber,
+                VendorUserId = vendorUserId,
+                VendorName = vendorName,
+                VendorType = vendorType,
+                VendorTypeLabel = VendorTypeLabel(vendorType)
             };
+        }
+
+        class ActivityView
+        {
+            public string Id { get; set; }
+            public string ListingType { get; set; }
+            public string ListingId { get; set; }
+            public string ListingTitle { get; set; }
+            public string ListingImage { get; set; }
+            public string Kind { get; set; }
+            public string Note { get; set; }
+            public DateTime CreatedAt { get; set; }
+            public string ClientUserId { get; set; }
+            public string ClientName { get; set; }
+            public string ClientEmail { get; set; }
+            public string ClientPhone { get; set; }
+            public string VendorUserId { get; set; }
+            public string VendorName { get; set; }
+            public string VendorType { get; set; }
+            public string VendorTypeLabel { get; set; }
         }
 
         static void ApplyVendor(VendorProfile profile, ref string userId, ref string name, ref string type, string fallbackType)
