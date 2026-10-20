@@ -17,7 +17,7 @@ namespace Dashboards.Api
         public IHttpActionResult GetProfile()
         {
             var userId = RequireSeeker();
-            JobSeekerSchema.Ensure();
+            ProfileSchema.Ensure();
             using (var db = new ApplicationDbContext())
             {
                 var user = db.Users.Find(userId);
@@ -34,7 +34,7 @@ namespace Dashboards.Api
             var userId = RequireSeeker();
             if (body == null)
                 throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Profile is required");
-            JobSeekerSchema.Ensure();
+            ProfileSchema.Ensure();
             using (var db = new ApplicationDbContext())
             {
                 var user = db.Users.Find(userId);
@@ -42,6 +42,8 @@ namespace Dashboards.Api
                 if (user == null || profile == null)
                     throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
 
+                if (body.Address != null) profile.AddressLine1 = Cut(body.Address, 255);
+                if (body.Pincode != null) profile.PinCode = Cut(body.Pincode, 10);
                 if (body.City != null) profile.LocationCity = Cut(body.City, 100);
                 if (body.State != null) profile.LocationState = Cut(body.State, 100);
                 if (body.YearOfExperience.HasValue) profile.YearOfExperience = body.YearOfExperience;
@@ -55,7 +57,6 @@ namespace Dashboards.Api
                     profile.ExpectedCtcText = Cut(body.ExpectedCtc, 100);
                     profile.ExpectedSalary = MoneyOrNull(body.ExpectedCtc);
                 }
-                if (body.ReadyToRelocate.HasValue) profile.ReadyToRelocate = body.ReadyToRelocate.Value;
                 if (body.Designation != null) profile.Designation = Cut(body.Designation, 150);
                 if (!string.IsNullOrWhiteSpace(body.Name))
                 {
@@ -152,24 +153,6 @@ namespace Dashboards.Api
             }
         }
 
-        [HttpDelete, Route("photo")]
-        public IHttpActionResult ClearPhoto()
-        {
-            var userId = RequireSeeker();
-            using (var db = new ApplicationDbContext())
-            {
-                var user = db.Users.Find(userId);
-                if (user == null)
-                    throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
-                user.ProfilePic = null;
-                var rows = db.UserAttachments.Where(a => a.UserId == userId && a.AttachmentType == "PROFILE_PHOTO").ToList();
-                foreach (var row in rows)
-                    db.UserAttachments.Remove(row);
-                db.SaveChanges();
-                return Ok(new { success = true });
-            }
-        }
-
         [HttpDelete, Route("resume")]
         public IHttpActionResult ClearResume()
         {
@@ -209,13 +192,14 @@ namespace Dashboards.Api
             {
                 name = profile.FullName ?? user.FullName,
                 phone = user.PhoneNumber,
+                address = profile.AddressLine1,
+                pincode = profile.PinCode,
                 city = profile.LocationCity,
                 state = profile.LocationState,
                 designation = profile.Designation,
                 yearOfExperience = profile.YearOfExperience,
                 currentCtc = profile.CurrentCtcText,
                 expectedCtc = profile.ExpectedCtcText,
-                readyToRelocate = profile.ReadyToRelocate,
                 photoUrl = ComFiles.UserPhoto(user),
                 photoAttachmentId = photo == null ? (int?)null : photo.Id,
                 resumeUrl = string.IsNullOrWhiteSpace(profile.ResumeUrl) ? null : ComFiles.AttachmentUrl(profile.ResumeUrl),
@@ -307,13 +291,14 @@ namespace Dashboards.Api
         public class ProfileBody
         {
             public string Name { get; set; }
+            public string Address { get; set; }
+            public string Pincode { get; set; }
             public string City { get; set; }
             public string State { get; set; }
             public string Designation { get; set; }
             public int? YearOfExperience { get; set; }
             public string CurrentCtc { get; set; }
             public string ExpectedCtc { get; set; }
-            public bool? ReadyToRelocate { get; set; }
             public List<EducationBody> Educations { get; set; }
             public List<ExperienceBody> Experiences { get; set; }
             public List<CertificateBody> Certificates { get; set; }

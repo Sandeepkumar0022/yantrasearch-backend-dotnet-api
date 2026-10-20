@@ -32,6 +32,12 @@ namespace Dashboards.Models
         [StringLength(100)]
         public string Sector { get; set; }
 
+        [StringLength(200)]
+        public string ClientName { get; set; }
+
+        [StringLength(100)]
+        public string LabourStrength { get; set; }
+
         public int ManpowerSupplied { get; set; }
 
         [StringLength(100)]

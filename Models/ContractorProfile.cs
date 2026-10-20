@@ -84,6 +84,8 @@ namespace Dashboards.Models
         public DateTime? UpdatedAt { get; set; }
 
         public int WorkExperience { get; set; }
+
+        public bool HasNoPriorProjects { get; set; }
         // Future relationships
         public virtual ICollection<ContractorProject> Projects { get; set; }
     }

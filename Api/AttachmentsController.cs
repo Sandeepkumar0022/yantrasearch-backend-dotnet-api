@@ -48,6 +48,13 @@ namespace Dashboards.Api
             return Ok(AttachmentFiles.Delete(Request, userId, id));
         }
 
+        [HttpDelete, Route("photo")]
+        public IHttpActionResult DeletePhoto()
+        {
+            var userId = RequireOwner();
+            return Ok(AttachmentFiles.ClearPhoto(Request, userId));
+        }
+
         string RequireOwner()
         {
             var id = CurrentUser.Id(this);
@@ -280,10 +287,24 @@ namespace Dashboards.Api
                             db.EmployeeCertificates.Remove(cert);
                     }
                 }
-                var physical = ComFiles.Physical(row.StoragePath);
                 db.UserAttachments.Remove(row);
                 db.SaveChanges();
-                try { if (!string.IsNullOrEmpty(physical) && File.Exists(physical)) File.Delete(physical); } catch { }
+                return new { success = true };
+            }
+        }
+
+        /// <summary>Clears the profile picture or logo. Files stay on disk; only the links are removed.</summary>
+        public static object ClearPhoto(HttpRequestMessage request, string userId)
+        {
+            using (var db = new ApplicationDbContext())
+            {
+                var user = db.Users.Find(userId);
+                if (user == null)
+                    throw ApiResults.Problem(request, HttpStatusCode.NotFound, "User not found");
+                user.ProfilePic = null;
+                foreach (var row in db.UserAttachments.Where(a => a.UserId == userId && (a.AttachmentType == "PROFILE_PHOTO" || a.AttachmentType == "LOGO")).ToList())
+                    db.UserAttachments.Remove(row);
+                db.SaveChanges();
                 return new { success = true };
             }
         }

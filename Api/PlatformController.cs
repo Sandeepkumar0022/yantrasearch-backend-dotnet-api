@@ -295,6 +295,8 @@ namespace Dashboards.Api
         {
             var userId = RequireUser();
             var admin = CurrentUser.Is(this, "ADMIN");
+            if (!admin && CurrentUser.Is(this, "JOB_SEEKER"))
+                throw ApiResults.Problem(Request, HttpStatusCode.Forbidden, "Client requirements are not available to job seekers");
             using (var db = new ApplicationDbContext())
             {
                 var q = db.ClientRequirements.AsQueryable();
@@ -408,8 +410,10 @@ namespace Dashboards.Api
                 {
                     var profile = db.EmployeeProfiles.FirstOrDefault(p => p.UserId == userId);
                     if (profile == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
+                    if (body != null && body.Address != null) profile.AddressLine1 = Trim(body.Address, 255);
                     if (body != null && body.City != null) profile.LocationCity = Trim(body.City, 100);
                     if (body != null && body.State != null) profile.LocationState = Trim(body.State, 100);
+                    if (body != null && body.Pincode != null) profile.PinCode = Trim(body.Pincode, 10);
                 }
                 db.SaveChanges();
                 return Ok(ReadProfile(db, userId));
@@ -566,6 +570,8 @@ namespace Dashboards.Api
                         description = p.Description,
                         location = p.Location,
                         sector = p.Sector,
+                        clientName = p.ClientName,
+                        labourStrength = p.LabourStrength,
                         manpowerSupplied = p.ManpowerSupplied,
                         duration = p.Duration,
                         status = p.ProjectType == ProjectType.Current ? "current" : "past",
@@ -739,7 +745,7 @@ namespace Dashboards.Api
             else if (role == "JOB_SEEKER")
             {
                 var profile = db.EmployeeProfiles.FirstOrDefault(p => p.UserId == userId);
-                if (profile != null) { city = profile.LocationCity; state = profile.LocationState; }
+                if (profile != null) { address = profile.AddressLine1; city = profile.LocationCity; state = profile.LocationState; pincode = profile.PinCode; }
             }
             return new { userId, role, address, city, state, pincode };
         }

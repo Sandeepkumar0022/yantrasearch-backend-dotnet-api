@@ -7,7 +7,10 @@ namespace Dashboards.Data
 {
     public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     {
-        public ApplicationDbContext() : base("DefaultConnection") { }
+        public ApplicationDbContext() : base("DefaultConnection")
+        {
+            Dashboards.Services.ProfileSchema.Ensure();
+        }
 
         // Identity tables without "AspNet" prefix
         protected override void OnModelCreating(DbModelBuilder modelBuilder)

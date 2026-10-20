@@ -39,6 +39,16 @@ namespace Dashboards.Api
             public List<SeekerEducationInput> Educations { get; set; }
             public List<SeekerExperienceInput> Experiences { get; set; }
             public List<SeekerCertificateInput> Certificates { get; set; }
+            public List<string> WorkStates { get; set; }
+            public List<string> ContractorTypes { get; set; }
+            public string ContractorTypeOther { get; set; }
+            public List<string> WorkingSectors { get; set; }
+            public string WorkingSectorOther { get; set; }
+            public string LabourStrength { get; set; }
+            public int? WorkExperience { get; set; }
+            public string WorkSpecialisation { get; set; }
+            public bool HasNoPriorProjects { get; set; }
+            public List<ContractorProjectInput> Projects { get; set; }
         }
 
         public class SeekerEducationInput
@@ -129,6 +139,12 @@ namespace Dashboards.Api
                 case "CLIENT": identityRole = "Client"; userType = UserType.Client; break;
                 default:
                     throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Role must be CLIENT, SUPPLIER, CONTRACTOR, or JOB_SEEKER");
+            }
+            if (javaRole == "CONTRACTOR")
+            {
+                var workStates = ContractorFields.Join(body.WorkStates, null);
+                if (workStates != null && workStates.Length > ContractorFields.WorkLocationsMax)
+                    throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, ContractorFields.WorkStatesTooLong);
             }
 
             using (var db = new ApplicationDbContext())
@@ -566,11 +582,13 @@ namespace Dashboards.Api
                     {
                         if (string.Equals(profile.SupplierKind, "materials", StringComparison.OrdinalIgnoreCase))
                             continue;
+                        var equipmentName = Cut(string.IsNullOrWhiteSpace(title) ? "Equipment" : title, 100);
                         var equipment = new Equipment
                         {
                             VendorId = profile.Id,
-                            Name = Cut(string.IsNullOrWhiteSpace(title) ? "Equipment" : title, 100),
-                            Category = Cut(category, 255),
+                            Name = equipmentName,
+                            Category = Cut(string.IsNullOrWhiteSpace(item.Category) ? EquipmentCatalog.CategoryFor(equipmentName) : category, 255),
+                            ThumbnailUrl = EquipmentCatalog.ThumbFor(equipmentName),
                             Description = note,
                             Location = Cut(location, 255),
                             IsAvailable = true,
@@ -611,30 +629,49 @@ namespace Dashboards.Api
             }
             else if (javaRole == "CONTRACTOR")
             {
-                db.ContractorProfiles.Add(new ContractorProfile
+                var workLocations = ContractorFields.Join(body.WorkStates, null);
+                var projects = (body.Projects ?? new List<ContractorProjectInput>()).Where(p => p != null && !ContractorFields.IsBlank(p)).ToList();
+                var contractor = new ContractorProfile
                 {
                     UserId = user.Id,
-                    OwnerName = name,
-                    Email = user.Email,
-                    Mobile = body.Phone,
-                    CompanyName = name,
-                    City = body.City,
-                    State = body.State,
-                    Pin = body.Pincode,
-                    Location = body.Address,
+                    OwnerName = Cut(name, 150),
+                    ContactPerson = Cut(name, 100),
+                    Email = Cut(user.Email, 100),
+                    Mobile = Cut(body.Phone, 20),
+                    CompanyName = Cut(FirstNonEmpty(body.CompanyName, name), 150),
+                    City = Cut(body.City, 128),
+                    State = Cut(body.State, 128),
+                    Pin = Cut(body.Pincode, 45),
+                    Location = Cut(body.Address, 255),
+                    WorkLocations = workLocations,
+                    ContractorType = ContractorFields.Join(body.ContractorTypes, body.ContractorTypeOther),
+                    WorkingSectors = ContractorFields.Join(body.WorkingSectors, body.WorkingSectorOther),
+                    LaborStrength = Cut(body.LabourStrength, 50),
+                    WorkExperience = body.WorkExperience.HasValue && body.WorkExperience.Value > 0 ? body.WorkExperience.Value : 0,
+                    SpecificWorkDetail = TrimOrNull(body.WorkSpecialisation),
+                    HasNoPriorProjects = body.HasNoPriorProjects && projects.Count == 0,
+                    PaidPlan = "Free",
                     IsActive = true,
                     CreatedAt = DateTime.Now
-                });
+                };
+                db.ContractorProfiles.Add(contractor);
+                db.SaveChanges();
+                foreach (var item in projects)
+                {
+                    db.ContractorProjects.Add(ContractorFields.NewProject(contractor.Id, item));
+                }
+                db.SaveChanges();
             }
             else if (javaRole == "JOB_SEEKER")
             {
-                JobSeekerSchema.Ensure();
                 var profile = new EmployeeProfile
                 {
                     UserId = user.Id,
                     FullName = name,
                     LocationCity = Cut(body.City, 100),
                     LocationState = Cut(body.State, 100),
+                    AddressLine1 = Cut(body.Address, 255),
+                    PinCode = Cut(body.Pincode, 10),
                     YearOfExperience = body.YearOfExperience,
                     CurrentCtcText = Cut(body.CurrentCtc, 100),
                     ExpectedCtcText = Cut(body.ExpectedCtc, 100),
@@ -706,9 +743,14 @@ namespace Dashboards.Api
                 db.ClientProfiles.Add(new ClientProfile
                 {
                     UserId = user.Id,
-                    FullName = name,
-                    Phone = body.Phone,
-                    AddressLine1 = body.Address
+                    FullName = Cut(name, 150),
+                    CompanyName = Cut(FirstNonEmpty(body.CompanyName, name), 200),
+                    Phone = Cut(body.Phone, 50),
+                    AddressLine1 = Cut(body.Address, 255),
+                    City = Cut(body.City, 100),
+                    State = Cut(body.State, 100),
+                    PinCode = Cut(body.Pincode, 20),
+                    CreatedAt = DateTime.Now
                 });
             }
             return created;

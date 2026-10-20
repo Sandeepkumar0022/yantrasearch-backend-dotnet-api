@@ -86,7 +86,19 @@ namespace Dashboards.Api
                 var row = OwnedEquipment(db, id, userId);
                 if (body != null)
                 {
-                    if (!string.IsNullOrWhiteSpace(body.Title)) row.Name = body.Title.Trim();
+                    if (!string.IsNullOrWhiteSpace(body.Title))
+                    {
+                        var title = body.Title.Trim();
+                        if (title.Length > 100) title = title.Substring(0, 100);
+                        var renamed = !string.Equals(row.Name, title, StringComparison.OrdinalIgnoreCase);
+                        row.Name = title;
+                        var known = renamed && body.EquipmentCategoryCode == null ? EquipmentCatalog.Find(title) : null;
+                        if (known != null)
+                        {
+                            row.Category = known.Category;
+                            row.ThumbnailUrl = known.Thumb;
+                        }
+                    }
                     if (body.EquipmentCategoryCode != null) row.Category = body.EquipmentCategoryCode.Trim();
                     if (body.Description != null) row.Description = body.Description;
                     if (body.Location != null) row.Location = body.Location;

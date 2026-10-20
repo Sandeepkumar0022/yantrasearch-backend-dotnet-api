@@ -1,0 +1,362 @@
+[
+    {
+        "name": "Bulldozers",
+        "cat": "Earth Moving Equipment",
+        "des": "A bulldozer or dozer is a large, motorized machine equipped with a metal blade to the front for pushing material: soil, sand, snow, rubble, or rock during construction work. It travels most commonly on continuous tracks, though specialized models riding on large off-road tires are also produced.",
+        "thumb": "buldozer.png"
+    },
+    {
+        "name": "Excavators",
+        "cat": "Earth Moving Equipment",
+        "des": "Excavators are heavy construction Equipment consisting of a boom, arm, bucket \u0026 cab on a rotating superstructure atop an undercarriage with tracks or wheels. These machines are used mainly for digging purposes as well as various lifting and carrying tasks in various applications.",
+        "thumb": "excavator.png"
+    },
+    {
+        "name": "Backhoe Loaders",
+        "cat": "Earth Moving Equipment",
+        "des": "Backhoe loaders are heavy-duty pieces of equipment that can be used for a variety of tasks. Primarily excavation machines, they can do double-duty because they have working implements on both the front and the back of a tractor body.",
+        "thumb": "Backhoe-loader.png"
+    },
+    {
+        "name": "Skid Steer Loaders",
+        "cat": "Earth Moving Equipment",
+        "des": "A skid steer is a small but versatile piece of machinery primarily used for grading \u0026 moving material in the dirt world. It is capable of zero-radius turning, by driving one set of wheels forward while simultaneously driving the opposite set of wheels in reverse.",
+        "thumb": "Skid-Steer-Loader.png"
+    },
+    {
+        "name": "Motor Graders",
+        "cat": "Earth Moving Equipment",
+        "des": "A motor grader is a construction vehicle used to maintain unpaved roads \u0026 establish the final grades on construction projects. They are designed to create flat surfaces and can spread dirt and remove debris. They are best recognized for their long adjustable blade.",
+        "thumb": "Motor-grader.png"
+    },
+    {
+        "name": "Trenchers",
+        "cat": "Earth Moving Equipment",
+        "des": "A trencher is a piece of construction equipment used to dig trenches , especially for laying pipes  or electrical cables, for installing drainage, or in preparation for trench warfare . Trenchers may range in size from walk-behind models, to attachments for a skid loader or tractor, to very heavy tracked heavy equipment.",
+        "thumb": "Trencher.png"
+    },
+    {
+        "name": "Scrapers",
+        "cat": "Earth Moving Equipment",
+        "des": "Scrapers, also called wheel tractor scrapers, are commonly used to scrape \u0026 level surfaces. These heavy-duty earthmoving machines can also haul earth and materials, such as dirt and gravel, more than just a short distanceâ€”they can move it from one job site to another.",
+        "thumb": "Scraper.png"
+    },
+    {
+        "name": "Wheel Loaders",
+        "cat": "Earth Moving Equipment",
+        "des": "A loader, also called a bucket loader, front loader, or pay loader, is a machine widely used in the construction sector, either for buildings, public works, roads, highways, tunnels, or any activity that requires moving soil or rocks in large volumes, as well as loading and managing waste.",
+        "thumb": "Wheel-loader.png"
+    },
+    {
+        "name": "Compact Track Loaders",
+        "cat": "Earth Moving Equipment",
+        "des": "It is designed to support a wide range of attachments, like buckets, blades, augers, hammers \u0026 more. Versatile compact track loaders offer flexibility for various tasks across different job sites. Specialized Compact Track Loaders: Built for specific tasks like road building or forestry.",
+        "thumb": "Compact-Track-Loader.png"
+    },
+    {
+        "name": "Articulated Dump Trucks",
+        "cat": "Earth Moving Equipment",
+        "des": "A Articulated Dump Trucks or sometimes a dump hauler, is a very large heavy-duty type of dump truck used to transport loads over rough terrain \u0026 occasionally on public roads.",
+        "thumb": "Articulated-dump-truck.png"
+    },
+    {
+        "name": "Rigid Dump Trucks",
+        "cat": "Earth Moving Equipment",
+        "des": "In a rigid dump truck, the cab \u0026 dump body both sit on the same fixed chassis. In an articulated dump truck, on the other hand, the cab attaches to the tipping body at a point of articulation directly behind the cab.",
+        "thumb": "Rigid-Dump-Truck.png"
+    },
+    {
+        "name": "Dump Truck",
+        "cat": "Earth Moving Equipment",
+        "des": "A dump truck, known also as a dumping truck, dump trailer, dumper trailer, dump lorry or dumper lorry or a dumper for short, is used for transporting materials (such as dirt, gravel or demolition waste) for construction as well as coal.",
+        "thumb": "Dump-Truck.png"
+    },
+    {
+        "name": "Road Roller",
+        "cat": "Earth Moving Equipment",
+        "des": "A road roller is a compactor-type engineering vehicle used to compact soil, gravel, concrete, or asphalt in the construction of roads and foundations. Similar rollers are used also at landfills or in agriculture. Road rollers are frequently referred to as steamrollers, regardless of their method of propulsion.",
+        "thumb": "Road-roller.png"
+    },
+    {
+        "name": "Asphalt Distributor",
+        "cat": "Earth Moving Equipment",
+        "des": "The anatomy of asphalt distributors consists of different types of components laid out and explanation of the same. The job of the truck chassis will be to carry the machine and move it slowly so that uniform spraying of bitumen can be done. With the bitumen sprayer, spraying of emulsion is also possible.",
+        "thumb": "Asphalt-distributor.png"
+    },
+    {
+        "name": "Paver machine",
+        "cat": "Earth Moving Equipment",
+        "des": "A paver (road paver finisher, asphalt finisher, road paving machine) is a piece of construction equipment used to lay asphalt concrete or Portland cement concrete on roads, bridges, parking lots and other such places",
+        "thumb": "Paver-machine.png"
+    },
+    {
+        "name": "Compactor",
+        "cat": "Earth Moving Equipment",
+        "des": "A compactor is a machine or mechanism used to reduce the size of material such as waste material or bio mass through compaction.",
+        "thumb": "Compactor.jpg"
+    },
+    {
+        "name": "Tower Crane",
+        "cat": "Lifting Equipment",
+        "des": "a tower crane is a type of machine equipped with a hoist rope, chains or sheaves and used to lower, lift \u0026 move heavy or bulk construction materials around.",
+        "thumb": "Tower-Crane.jpg"
+    },
+    {
+        "name": "Crawler Crane",
+        "cat": "Lifting Equipment",
+        "des": "This type of crane is mounted on an undercarriage, featuring a set of tracks that allow for superior stability \u0026 mobility. Since they offer strength and stability at long distances, crawler cranes are ideal for pick-and-carry and heavy-duty lifting applications.",
+        "thumb": "Crawler-crane.jpg"
+    },
+    {
+        "name": "Telescopic crane",
+        "cat": "Lifting Equipment",
+        "des": "A telescopic crane is a type of crane equipped with a boom or hydraulic cylinder that allows a change in length similar to telescope. Although they\u0027re considered fixed cranes, most are set on trucks for transportation across different worksites.",
+        "thumb": "Telescopic-crane.jpg"
+    },
+    {
+        "name": "Gantry Crane",
+        "cat": "Lifting Equipment",
+        "des": "A gantry crane is a type of overhead crane with legs that support its bridge, trolley \u0026 hoist. Larger gantry systems can travel on rail or track embedded in the ground, typically running in a straight line or covering a work area.",
+        "thumb": "Gantry-Crane.jpg"
+    },
+    {
+        "name": "EOT Crane",
+        "cat": "Lifting Equipment",
+        "des": "EOT crane is one of the most common types of overhead crane, or called bridge cranes, which consist of parallel runways with a travelling bridge spanning the gap.",
+        "thumb": "EOT-crane..jpg"
+    },
+    {
+        "name": "Launching Gantry or girder",
+        "cat": "Lifting Equipment",
+        "des": "Launching Girder is also known as Launching Gantry. A launching girder is in general a design \u0026 built machine used in precast post-tensioned bridge construction. It consists of lifting devices and a supporting structure for lifting precast beams and precast bridge segments in position for assembling.",
+        "thumb": "Launching-crane.jpg"
+    },
+    {
+        "name": "Conveyor system",
+        "cat": "Lifting Equipment",
+        "des": "A conveyor system is a common piece of mechanical handling equipment that moves materials from one location to another. Conveyors are especially useful in applications involving the transport of heavy or bulky materials.",
+        "thumb": "Conveyor-System.jpg"
+    },
+    {
+        "name": "Farana Crane",
+        "cat": "Lifting Equipment",
+        "des": "Farana crane can be a very simple machine with just a telescopic boom on its platform, or a full-sized crane equipped with various attachments. The standard cranes are machines used for lifting big and heavy sized objects.",
+        "thumb": "Farana-crane.jpg"
+    },
+    {
+        "name": "Boom lift",
+        "cat": "Lifting Equipment",
+        "des": "A boom lift is a type of aerial lift designed to lift workers on construction sites, on farms along utility lines \u0026 elsewhere. It consists of a platform or bucket attached to a hydraulic arm and a grounded, movable base.",
+        "thumb": "Boom-Lift.jpg"
+    },
+    {
+        "name": "Telescopic Handlers (Telehandler)",
+        "cat": "Lifting Equipment",
+        "des": "A telescopic handler, or Telehandler, is a hydraulic lifting machine used to carry \u0026 place heavy materials.",
+        "thumb": "Telescopic-handler.jpg"
+    },
+    {
+        "name": "Batching Plant",
+        "cat": "Concrete Equipment",
+        "des": "A concrete plant also known as a batch plant or batching plant or a concrete batching plant, is equipment that combines various ingredients to form concrete. Some of these inputs include water, air, admixtures, sand, aggregate, fly ash, silica fume, slag, and cement.",
+        "thumb": "Batching-Plant.jpg"
+    },
+    {
+        "name": "Hot Mixing Plants",
+        "cat": "Concrete Equipment",
+        "des": "It mixes together aggregates \u0026 bitumen to create the hot mix paving material. The aggregates here can be a single sized material or it can be a blend of various grades/sizes of materials.",
+        "thumb": "Hot-mix-plant.jpg"
+    },
+    {
+        "name": "Wet Mix Plant",
+        "cat": "Concrete Equipment",
+        "des": "Wet mix macadam plants also known as WMM plants are for the base and sub base. Usually, the plant features aggregate feeding system, a pug mills continuous mixer, water tank, a storage silo and control panel. Sometimes to facilitate addition of cement in the mix, the plant can also be supplied with a cement silo.",
+        "thumb": "Wet-mix-Plant.jpg"
+    },
+    {
+        "name": "Transit Mixer",
+        "cat": "Concrete Equipment",
+        "des": "Transit mixer is a multipurpose device that used to transport concrete mortar from a concrete batching plant to working location. The transit mixer consists of a drum with a spiral blade which has the ability to move in two directions.",
+        "thumb": "Transit-Mixer.jpg"
+    },
+    {
+        "name": "Boom Placer",
+        "cat": "Concrete Equipment",
+        "des": "A boom placer is another term for a concrete boom pump. It is a type of machine used in construction projects to transfer liquid concrete by pumping it through a pipeline to the desired location",
+        "thumb": "Boom-Placer.jpg"
+    },
+    {
+        "name": "Moli pump",
+        "cat": "Concrete Equipment",
+        "des": "The MOLI is a mobile pipeline concrete pump for high-pressure delivery of concrete and it offers a simple solution. The pump is quickly set up and is ready for operation \u0026 When the MOLI has finished the job, the site is available for other work",
+        "thumb": "Moli-Pump.jpg"
+    },
+    {
+        "name": "Stationary Pump",
+        "cat": "Concrete Equipment",
+        "des": "Stationary concrete pump is a tool used for transferring liquid concrete by pumping. The advantage of a stationary pump is that the pipeline can be long so that the actual pump can be very far away from where the concrete is being placed; maybe hundreds of meters below or even kilometers away.",
+        "thumb": "Stationary-pump.jpg"
+    },
+    {
+        "name": "Screed pump",
+        "cat": "Concrete Equipment",
+        "des": "Screed pumps can efficiently mix large volumes of screed in a short time \u0026 is ideal for screeding large areas. Ideal when access to work site is difficult: Screed pumps are suitable for complex constructions and buildings with difficult access where materials can\u0027t be carried up manually.",
+        "thumb": "Screed-pump.jpg"
+    },
+    {
+        "name": "Crushers",
+        "cat": "Concrete Equipment",
+        "des": "A crusher is a machine that reduces large rocks into smaller rocks, gravel, or rock dust. Crushers are mainly used in the mining and construction industries where they are used to break very large rocks \u0026 boulders into smaller pieces.",
+        "thumb": "Crusher.jpg"
+    },
+    {
+        "name": "Concrete Pulverizer",
+        "cat": "Concrete Equipment",
+        "des": "A concrete pulverizer is an attachment for excavator that will break the concrete into small pieces \u0026 cut through the embedded rebar, allowing the concrete to fall to the ground rather than hang onto the rebar. It consists of a stationary jaw and moveable jaw.",
+        "thumb": "Pulverizer.jpg"
+    },
+    {
+        "name": "Concrete Mixer",
+        "cat": "Concrete Equipment",
+        "des": "Cement or Concrete mixers make mixing large amounts of concrete \u0026 cement easy. To be effective, concrete needs to be mixed well and quickly, which is hard to do by hand. Mixers are ideal for all kinds of projects, from small do-it-yourself home improvement projects to large commercial construction projects.",
+        "thumb": "Concrete-Mixer.jpg"
+    },
+    {
+        "name": "Bar Bending machine",
+        "cat": "Miscellaneous Equipment",
+        "des": "Bar Bending Machine is common equipment used at construction sites. It is used to bend the bar made of any kind of metal.",
+        "thumb": "Bar-Bending-Machine.jpg"
+    },
+    {
+        "name": "Bar Cutting machine",
+        "cat": "Miscellaneous Equipment",
+        "des": "A steel cutting machine is a specialized machine used to cut steel rods, bars, wires \u0026 other metal components with precision \u0026 efficiency. These machines come in various types and sizes, ranging from manual tools to advanced hydraulic systems",
+        "thumb": "Bar-Cutting-Machine.jpg"
+    },
+    {
+        "name": "Chiller Plant",
+        "cat": "Miscellaneous Equipment",
+        "des": "Chilling plant is the easiest way to keep concrete cool during hot weather. Minimum of 5Â°C water available in insulated cold-water storage.",
+        "thumb": "Water-Chiller-Plant.jpg"
+    },
+    {
+        "name": "Air Compressor",
+        "cat": "Miscellaneous Equipment",
+        "des": "An air compressor is a machine that takes ambient air from the surroundings and discharges it at a higher pressure. It is an application of a gas compressor and a pneumatic device that convert mechanical power  (from an electric motor, diesel or gasoline engine, etc.) into potential energy stored in compressed air, which has many uses. A common application is to compress air into a storage tank, for immediate or later use.",
+        "thumb": "Air-compressor.jpg"
+    },
+    {
+        "name": "Diesel Generators",
+        "cat": "Miscellaneous Equipment",
+        "des": "A diesel generator (DG) also known as a diesel genset is the combination of a diesel engine with an electric generator (often an alternator) to generate electrical energy. This is a specific case of engine generator.",
+        "thumb": "Diesel-Generator.jpg"
+    },
+    {
+        "name": "Transformers",
+        "cat": "Miscellaneous Equipment",
+        "des": "A transformer is a device that transfers electric energy from one alternating-current circuit to one or more other circuits, either increasing (stepping up) or reducing (stepping down) the voltage.",
+        "thumb": "Transformer.jpg"
+    },
+    {
+        "name": "Total Stations",
+        "cat": "Miscellaneous Equipment",
+        "des": "A Total Station is a modern surveying instrument that integrates an electronic theodolite with an electronic distance meter. A theodolite uses a movable telescope to measure angles in both the horizontal and vertical planes.",
+        "thumb": "Total-Station.jpg"
+    },
+    {
+        "name": "Concrete Testing Equipment",
+        "cat": "Miscellaneous Equipment",
+        "des": "It is used for testing of concrete consistency, strength, set time, and shrinkage rate..",
+        "thumb": "Concrete-Testing Machine-CTM.jpg"
+    },
+    {
+        "name": "Non-Destructive Testing (NDT) Equipment",
+        "cat": "Miscellaneous Equipment",
+        "des": "Non-destructive testing (NDT) equipment is used to detect, inspect \u0026 measure flaws, bond integrity \u0026 other material conditions without permanently altering or destroying the examined part or product. NDT equipment includes a wide variety of instruments and systems.",
+        "thumb": "Non-Destructive-Testing-Equipment.jpg"
+    },
+    {
+        "name": "Dredgers (for underwater construction)",
+        "cat": "Miscellaneous Equipment",
+        "des": "Dredges are specialized pieces of equipment that create a vacuum to suck up \u0026 pump out the unwanted sediment \u0026 debris.  Two basic principles of dredging: Excavation \u0026 Suction. A rotating cutting tool dislodges the soil so that it can be drawn into a suction pipe.",
+        "thumb": "Dredger-Machine.jpg"
+    },
+    {
+        "name": "Forklift",
+        "cat": "Miscellaneous Equipment",
+        "des": "A forklift is a powered industrial truck used to lift and move materials over short distances.",
+        "thumb": "Fork-lift.jpg"
+    },
+    {
+        "name": "Hydraulic Hammers",
+        "cat": "Miscellaneous Equipment",
+        "des": "Hydraulic hammers/breakers are essential pieces of equipment in the construction equipment industry. They are used in both building and demolition for the construction industry. For construction, they can be used to dig holes, breaking up rock or breaking the dirt to dig a hole more easily.",
+        "thumb": "Hydraulic-Hammer.jpg"
+    },
+    {
+        "name": "Piling Rig",
+        "cat": "Miscellaneous Equipment",
+        "des": "Piling rigs are machines used for construction that are meant for piling in or making piles in foundation engineering.",
+        "thumb": "Pile-Rig.jpg"
+    },
+    {
+        "name": "Auger",
+        "cat": "Miscellaneous Equipment",
+        "des": "An auger is a device to drill wood or other materials, consisting of a rotating metal shaft with a blade at the end that scrapes or cuts the wood",
+        "thumb": "Auger.jpg"
+    },
+    {
+        "name": "Vibro Hammer",
+        "cat": "Miscellaneous Equipment",
+        "des": "A vibratory hammer is a tool used to drive piles into the ground when building foundations for things like bridges, building, roads, marine docks, walls or railways.",
+        "thumb": "Vibro-Hammer.jpg"
+    },
+    {
+        "name": "Tunnel Boring Machines (TBMs)",
+        "cat": "Miscellaneous Equipment",
+        "des": "A tunnel boring machine is a machine that can excavate tunnels in a single operation, called full-face drilling. It has a rotating head with cutting parts and runs on hydraulic or electric motors, though its power supply is 100% electric. The TBM is also used for shoring.",
+        "thumb": "Tunnel-Boring-Machine.jpg"
+    },
+    {
+        "name": "Tunnel Excavators",
+        "cat": "Miscellaneous Equipment",
+        "des": "tunnel excavators are special machines which can be used in all conventional types of tunneling applications. After tunnel drilling machines have been used to create cross-tunnels, when explosives are being used for secondary profiling, and, of course, for direct excavator tunneling.",
+        "thumb": "Tunnel-Excavator.jpg"
+    },
+    {
+        "name": "Trailer",
+        "cat": "Miscellaneous Equipment",
+        "des": "A Trailer is a non-motorized vehicle that is designed to be towed or pulled by a motorized vehicle (such as a truck, tractor, or puller). It is primarily used for carrying, hauling, or transporting heavy materials, equipment, or goods from one place to another.",
+        "thumb": "Trailer.jpg"
+    },
+    {
+        "name": "Trailer Puller",
+        "cat": "Miscellaneous Equipment",
+        "des": "A Trailer Puller is a motorized vehicle designed to tow or pull trailers that carry heavy loads, machinery, or oversized construction components. It provides the driving force for the movement of trailers, ensuring safe hauling and transportation of materials from one location to another.",
+        "thumb": "Trailer-Puller.jpg"
+    },
+    {
+        "name": "Grab Machine",
+        "cat": "Miscellaneous Equipment",
+        "des": "A Grab Machine is a type of construction equipment fitted with a grab or clamshell bucket, used for picking up, holding, and handling bulk materials such as soil, sand, gravel, debris, or for excavation in deep and narrow spaces like wells, trenches, or foundations.",
+        "thumb": "Grab-Machine.jpg"
+    },
+    {
+        "name": "Water Tanker in.",
+        "cat": "Miscellaneous Equipment",
+        "des": "A Water Tanker is a vehicle-mounted tank designed for storing, transporting, and distributing water at construction sites, industrial areas, agricultural fields, and public utilities.",
+        "thumb": "Water-Tanker.jpg"
+    },
+    {
+        "name": "SPMT",
+        "cat": "Miscellaneous Equipment",
+        "des": "A Self-Propelled Modular Transporter (SPMT) is a platform vehicle equipped with a large number of wheels and independent steering units, designed for transporting extremely heavy and oversized loads such as bridge girders, refinery equipment, ship sections, or large construction components. It is self-driven and can move loads with precision in tight spaces.",
+        "thumb": "SPMT.jpg"
+    },
+    {
+        "name": "Desander Unit",
+        "cat": "Miscellaneous Equipment",
+        "des": "A Desander Unit is a solid-control equipment used in construction (especially piling, diaphragm wall, and tunneling works) and in the oil & gas industry, designed to remove sand, silt, and other solid particles from drilling fluids or bentonite slurry. It helps maintain the required slurry properties for safe excavation and stability of boreholes or trenches.",
+        "thumb": "Desander-Unit.jpg"
+    }
+]

@@ -154,7 +154,7 @@ namespace Dashboards.Services
             }
         }
 
-        static void AddColumn(ApplicationDbContext db, string table, string column, string definition)
+        internal static void AddColumn(ApplicationDbContext db, string table, string column, string definition)
         {
             try
             {

@@ -45,6 +45,12 @@ namespace Dashboards.Models
         [StringLength(100)]
         public string LocationState { get; set; }
 
+        [StringLength(255)]
+        public string AddressLine1 { get; set; }
+
+        [StringLength(10)]
+        public string PinCode { get; set; }
+
         public bool ReadyToRelocate { get; set; }
 
         public virtual ICollection<EmployeeExperience> Experiences { get; set; }

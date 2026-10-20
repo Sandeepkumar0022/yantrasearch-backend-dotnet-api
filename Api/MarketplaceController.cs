@@ -27,6 +27,18 @@ namespace Dashboards.Api
             }
         }
 
+        [HttpGet, Route("equipment/suggestions")]
+        public IHttpActionResult EquipmentSuggestions()
+        {
+            return Ok(EquipmentCatalog.All().Select(e => new
+            {
+                name = e.Name,
+                category = e.Category,
+                description = e.Description,
+                thumbnailUrl = EquipmentCatalog.ThumbUrl(e.Thumb)
+            }).ToList());
+        }
+
         [HttpGet, Route("equipment/me")]
         public IHttpActionResult MyEquipment()
         {
@@ -70,11 +82,15 @@ namespace Dashboards.Api
                     throw ApiResults.Problem(Request, HttpStatusCode.Forbidden, "Material suppliers cannot add equipment");
                 var title = body.Title.Trim();
                 if (title.Length > 100) title = title.Substring(0, 100);
+                var category = string.IsNullOrWhiteSpace(body.EquipmentCategoryCode)
+                    ? EquipmentCatalog.CategoryFor(title)
+                    : body.EquipmentCategoryCode.Trim();
                 var row = new Equipment
                 {
                     VendorId = vendor.Id,
                     Name = title,
-                    Category = string.IsNullOrWhiteSpace(body.EquipmentCategoryCode) ? "OTHER" : body.EquipmentCategoryCode.Trim(),
+                    Category = category,
+                    ThumbnailUrl = EquipmentCatalog.ThumbFor(title),
                     Description = body.Description,
                     Location = body.Location,
                     RentalRatePerDay = body.RatePerDay,
@@ -156,10 +172,18 @@ namespace Dashboards.Api
             AddImage(images, e.Id, e.Image3Url, 2);
             if (images.Count == 0 && !string.IsNullOrEmpty(e.ThumbnailUrl))
             {
-                var thumb = e.ThumbnailUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) || e.ThumbnailUrl.StartsWith("/")
-                    ? e.ThumbnailUrl
-                    : "/img/cat/construction-equipment/" + e.ThumbnailUrl;
-                images.Add(new { id = e.Id + "-t", url = PublicUrl(thumb), sortOrder = 0 });
+                var configured = e.ThumbnailUrl.StartsWith("/") ? null : EquipmentCatalog.ThumbUrl(e.ThumbnailUrl);
+                if (configured != null)
+                {
+                    images.Add(new { id = e.Id + "-t", url = configured, sortOrder = 0 });
+                }
+                else
+                {
+                    var thumb = e.ThumbnailUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) || e.ThumbnailUrl.StartsWith("/")
+                        ? e.ThumbnailUrl
+                        : "/img/cat/construction-equipment/" + e.ThumbnailUrl;
+                    images.Add(new { id = e.Id + "-t", url = PublicUrl(thumb), sortOrder = 0 });
+                }
             }
             return new
             {
@@ -283,6 +307,7 @@ namespace Dashboards.Api
                 laborStrength = c.LaborStrength,
                 workLocations = c.WorkLocations,
                 sectors = c.WorkingSectors,
+                hasNoPriorProjects = c.HasNoPriorProjects,
                 projects = (projects ?? new List<ContractorProject>()).Select(p => new
                 {
                     id = p.Id.ToString(),
@@ -290,6 +315,8 @@ namespace Dashboards.Api
                     description = p.Description,
                     location = p.Location,
                     sector = p.Sector,
+                    clientName = p.ClientName,
+                    labourStrength = p.LabourStrength,
                     status = p.ProjectType == ProjectType.Current ? "current" : "past"
                 }).ToList()
             };
@@ -330,7 +357,6 @@ namespace Dashboards.Api
                 education = EducationLabel(educations),
                 currentCompany = current != null ? current.CompanyName : "",
                 department = current != null ? current.Department ?? "" : "",
-                readyToRelocate = e.ReadyToRelocate,
                 skills = new string[0],
                 image = JobSeekerImage(e, photos),
                 availability = "Available",

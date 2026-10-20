@@ -139,6 +139,7 @@
     <Content Include="Global.asax" />
     <Content Include="Web.config" />
     <Content Include="Migrations\Scripts\AddJavaParityTables_MySQL.sql" />
+    <EmbeddedResource Include="Data\Jsons\equipmentNames.json" />
     <None Include="packages.config" />
   </ItemGroup>
   <PropertyGroup>
