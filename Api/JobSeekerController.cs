@@ -42,112 +42,7 @@ namespace Dashboards.Api
                 if (user == null || profile == null)
                     throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
 
-                if (body.Address != null) profile.AddressLine1 = Cut(body.Address, 255);
-                if (body.Pincode != null) profile.PinCode = Cut(body.Pincode, 10);
-                if (body.City != null) profile.LocationCity = Cut(body.City, 100);
-                if (body.State != null) profile.LocationState = Cut(body.State, 100);
-                if (body.YearOfExperience.HasValue) profile.YearOfExperience = body.YearOfExperience;
-                if (body.CurrentCtc != null)
-                {
-                    profile.CurrentCtcText = Cut(body.CurrentCtc, 100);
-                    profile.CurrentSalary = MoneyOrNull(body.CurrentCtc);
-                }
-                if (body.ExpectedCtc != null)
-                {
-                    profile.ExpectedCtcText = Cut(body.ExpectedCtc, 100);
-                    profile.ExpectedSalary = MoneyOrNull(body.ExpectedCtc);
-                }
-                if (body.Designation != null) profile.Designation = Cut(body.Designation, 150);
-                if (!string.IsNullOrWhiteSpace(body.Name))
-                {
-                    user.FullName = Cut(body.Name, 150);
-                    profile.FullName = user.FullName;
-                }
-
-                if (body.Educations != null)
-                {
-                    foreach (var row in db.EmployeeEducations.Where(e => e.EmployeeId == profile.EmployeeId).ToList())
-                        db.EmployeeEducations.Remove(row);
-                    foreach (var item in body.Educations)
-                    {
-                        if (item == null) continue;
-                        if (string.IsNullOrWhiteSpace(item.CollegeName) && string.IsNullOrWhiteSpace(item.CourseMajor)) continue;
-                        db.EmployeeEducations.Add(new EmployeeEducation
-                        {
-                            EmployeeId = profile.EmployeeId,
-                            CollegeName = Cut(item.CollegeName, 200),
-                            UniversityName = Cut(item.UniversityName, 200),
-                            City = Cut(JoinPlace(item.City, item.State), 150),
-                            StartYear = item.StartYear,
-                            EndYear = item.IsPursuing ? null : item.EndYear,
-                            CourseMajor = Cut(item.CourseMajor, 200)
-                        });
-                    }
-                }
-
-                if (body.Experiences != null)
-                {
-                    foreach (var row in db.EmployeeExperiences.Where(e => e.EmployeeId == profile.EmployeeId).ToList())
-                        db.EmployeeExperiences.Remove(row);
-                    foreach (var item in body.Experiences)
-                    {
-                        if (item == null || string.IsNullOrWhiteSpace(item.CompanyName)) continue;
-                        db.EmployeeExperiences.Add(new EmployeeExperience
-                        {
-                            EmployeeId = profile.EmployeeId,
-                            CompanyName = Cut(item.CompanyName, 200),
-                            Designation = Cut(item.Designation, 150),
-                            Department = Cut(item.Department, 150),
-                            City = Cut(JoinPlace(item.City, item.State), 150),
-                            StartDate = MonthDate(item.StartYear, item.StartMonth) ?? DateTime.Now,
-                            EndDate = item.IsCurrent ? (DateTime?)null : MonthDate(item.EndYear, item.EndMonth),
-                            IsCurrentCompany = item.IsCurrent,
-                            Description = string.IsNullOrWhiteSpace(item.Description) ? null : item.Description.Trim()
-                        });
-                    }
-                }
-
-                var createdCertificates = new List<object>();
-                if (body.Certificates != null)
-                {
-                    var incoming = body.Certificates.Where(c => c != null).ToList();
-                    var keep = new HashSet<int>(incoming.Where(c => c.Id.HasValue).Select(c => c.Id.Value));
-                    foreach (var row in db.EmployeeCertificates.Where(c => c.EmployeeId == profile.EmployeeId).ToList())
-                    {
-                        if (!keep.Contains(row.Id))
-                            db.EmployeeCertificates.Remove(row);
-                    }
-                    foreach (var item in incoming)
-                    {
-                        if (string.IsNullOrWhiteSpace(item.Title)) continue;
-                        if (item.Id.HasValue)
-                        {
-                            var row = db.EmployeeCertificates.FirstOrDefault(c => c.Id == item.Id.Value && c.EmployeeId == profile.EmployeeId);
-                            if (row == null) continue;
-                            row.Title = Cut(item.Title, 200);
-                            row.Authority = Cut(item.Authority, 200);
-                            var issued = MonthDate(item.IssueYear, item.IssueMonth);
-                            if (issued.HasValue) row.IssueDate = issued.Value;
-                            row.ExpiryDate = MonthDate(item.ExpiryYear, item.ExpiryMonth);
-                        }
-                        else
-                        {
-                            var row = new EmployeeCertificate
-                            {
-                                EmployeeId = profile.EmployeeId,
-                                Title = Cut(item.Title, 200),
-                                Authority = Cut(item.Authority, 200),
-                                IssueDate = MonthDate(item.IssueYear, item.IssueMonth) ?? DateTime.Now,
-                                ExpiryDate = MonthDate(item.ExpiryYear, item.ExpiryMonth)
-                            };
-                            db.EmployeeCertificates.Add(row);
-                            db.SaveChanges();
-                            createdCertificates.Add(new { id = row.Id, clientKey = item.ClientKey });
-                        }
-                    }
-                }
-
-                db.SaveChanges();
+                var createdCertificates = ApplyProfile(db, user, profile, body);
                 var saved = Read(db, user, profile);
                 return Ok(new { profile = saved, createdCertificates });
             }
@@ -171,6 +66,119 @@ namespace Dashboards.Api
             }
         }
 
+        /// <summary>Job seeker details, education, experience, and certificates. Shared with the admin profile editor; saves the changes.
+        /// Returns the ids of newly created certificates keyed by the client's ClientKey.</summary>
+        internal static List<object> ApplyProfile(ApplicationDbContext db, ApplicationUser user, EmployeeProfile profile, ProfileBody body)
+        {
+            if (body.Address != null) profile.AddressLine1 = Cut(body.Address, 255);
+            if (body.Pincode != null) profile.PinCode = Cut(body.Pincode, 10);
+            if (body.City != null) profile.LocationCity = Cut(body.City, 100);
+            if (body.State != null) profile.LocationState = Cut(body.State, 100);
+            if (body.YearOfExperience.HasValue) profile.YearOfExperience = body.YearOfExperience;
+            if (body.CurrentCtc != null)
+            {
+                profile.CurrentCtcText = Cut(body.CurrentCtc, 100);
+                profile.CurrentSalary = MoneyOrNull(body.CurrentCtc);
+            }
+            if (body.ExpectedCtc != null)
+            {
+                profile.ExpectedCtcText = Cut(body.ExpectedCtc, 100);
+                profile.ExpectedSalary = MoneyOrNull(body.ExpectedCtc);
+            }
+            if (body.Designation != null) profile.Designation = Cut(body.Designation, 150);
+            if (!string.IsNullOrWhiteSpace(body.Name))
+            {
+                user.FullName = Cut(body.Name, 150);
+                profile.FullName = user.FullName;
+            }
+
+            if (body.Educations != null)
+            {
+                foreach (var row in db.EmployeeEducations.Where(e => e.EmployeeId == profile.EmployeeId).ToList())
+                    db.EmployeeEducations.Remove(row);
+                foreach (var item in body.Educations)
+                {
+                    if (item == null) continue;
+                    if (string.IsNullOrWhiteSpace(item.CollegeName) && string.IsNullOrWhiteSpace(item.CourseMajor)) continue;
+                    db.EmployeeEducations.Add(new EmployeeEducation
+                    {
+                        EmployeeId = profile.EmployeeId,
+                        CollegeName = Cut(item.CollegeName, 200),
+                        UniversityName = Cut(item.UniversityName, 200),
+                        City = Cut(JoinPlace(item.City, item.State), 150),
+                        StartYear = item.StartYear,
+                        EndYear = item.IsPursuing ? null : item.EndYear,
+                        CourseMajor = Cut(item.CourseMajor, 200)
+                    });
+                }
+            }
+
+            if (body.Experiences != null)
+            {
+                foreach (var row in db.EmployeeExperiences.Where(e => e.EmployeeId == profile.EmployeeId).ToList())
+                    db.EmployeeExperiences.Remove(row);
+                foreach (var item in body.Experiences)
+                {
+                    if (item == null || string.IsNullOrWhiteSpace(item.CompanyName)) continue;
+                    db.EmployeeExperiences.Add(new EmployeeExperience
+                    {
+                        EmployeeId = profile.EmployeeId,
+                        CompanyName = Cut(item.CompanyName, 200),
+                        Designation = Cut(item.Designation, 150),
+                        Department = Cut(item.Department, 150),
+                        City = Cut(JoinPlace(item.City, item.State), 150),
+                        StartDate = MonthDate(item.StartYear, item.StartMonth) ?? DateTime.Now,
+                        EndDate = item.IsCurrent ? (DateTime?)null : MonthDate(item.EndYear, item.EndMonth),
+                        IsCurrentCompany = item.IsCurrent,
+                        Description = string.IsNullOrWhiteSpace(item.Description) ? null : item.Description.Trim()
+                    });
+                }
+            }
+
+            var createdCertificates = new List<object>();
+            if (body.Certificates != null)
+            {
+                var incoming = body.Certificates.Where(c => c != null).ToList();
+                var keep = new HashSet<int>(incoming.Where(c => c.Id.HasValue).Select(c => c.Id.Value));
+                foreach (var row in db.EmployeeCertificates.Where(c => c.EmployeeId == profile.EmployeeId).ToList())
+                {
+                    if (!keep.Contains(row.Id))
+                        db.EmployeeCertificates.Remove(row);
+                }
+                foreach (var item in incoming)
+                {
+                    if (string.IsNullOrWhiteSpace(item.Title)) continue;
+                    if (item.Id.HasValue)
+                    {
+                        var row = db.EmployeeCertificates.FirstOrDefault(c => c.Id == item.Id.Value && c.EmployeeId == profile.EmployeeId);
+                        if (row == null) continue;
+                        row.Title = Cut(item.Title, 200);
+                        row.Authority = Cut(item.Authority, 200);
+                        var issued = MonthDate(item.IssueYear, item.IssueMonth);
+                        if (issued.HasValue) row.IssueDate = issued.Value;
+                        row.ExpiryDate = MonthDate(item.ExpiryYear, item.ExpiryMonth);
+                    }
+                    else
+                    {
+                        var row = new EmployeeCertificate
+                        {
+                            EmployeeId = profile.EmployeeId,
+                            Title = Cut(item.Title, 200),
+                            Authority = Cut(item.Authority, 200),
+                            IssueDate = MonthDate(item.IssueYear, item.IssueMonth) ?? DateTime.Now,
+                            ExpiryDate = MonthDate(item.ExpiryYear, item.ExpiryMonth)
+                        };
+                        db.EmployeeCertificates.Add(row);
+                        db.SaveChanges();
+                        createdCertificates.Add(new { id = row.Id, clientKey = item.ClientKey });
+                    }
+                }
+            }
+
+            db.SaveChanges();
+            return createdCertificates;
+        }
+
         string RequireSeeker()
         {
             var id = CurrentUser.Id(this);
@@ -181,7 +189,7 @@ namespace Dashboards.Api
             return id;
         }
 
-        static object Read(ApplicationDbContext db, ApplicationUser user, EmployeeProfile profile)
+        internal static object Read(ApplicationDbContext db, ApplicationUser user, EmployeeProfile profile)
         {
             var educations = db.EmployeeEducations.Where(e => e.EmployeeId == profile.EmployeeId).OrderByDescending(e => e.EndYear).ThenByDescending(e => e.StartYear).ToList();
             var experiences = db.EmployeeExperiences.Where(e => e.EmployeeId == profile.EmployeeId).OrderByDescending(e => e.IsCurrentCompany).ThenByDescending(e => e.StartDate).ToList();

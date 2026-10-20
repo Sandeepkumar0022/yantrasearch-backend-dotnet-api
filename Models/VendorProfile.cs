@@ -40,14 +40,14 @@ namespace Dashboards.Models
         [StringLength(15)]
         public string GSTIN { get; set; }
 
-        [StringLength(15)]
+        [StringLength(255)]
         public string GSTIN_File { get; set; }
 
         [StringLength(10)]
         public string PAN { get; set; }
 
 
-        [StringLength(10)]
+        [StringLength(255)]
         public string PAN_File { get; set; }
 
 

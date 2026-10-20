@@ -20,6 +20,15 @@ namespace Dashboards.Services
         public int? EndYear { get; set; }
         public int? EndMonth { get; set; }
         public bool IsCurrent { get; set; }
+        /// <summary>Null leaves the stored value (registration does not ask for it).</summary>
+        public string Sector { get; set; }
+        /// <summary>"Manpower Engaged" on .com. Null leaves the stored value.</summary>
+        public int? ManpowerSupplied { get; set; }
+        /// <summary>Current projects only, like .com.</summary>
+        public int? ExpectedEndYear { get; set; }
+        public int? ExpectedEndMonth { get; set; }
+        /// <summary>"Show Project" on .com. Null leaves the stored value.</summary>
+        public bool? IsActive { get; set; }
     }
 
     /// <summary>
@@ -79,14 +88,34 @@ namespace Dashboards.Services
             row.Description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
             row.Location = Cut(input.Location, 255);
             row.ClientName = Cut(input.ClientName, 200);
+            row.Duration = Cut(input.ClientName, 100);
             row.LabourStrength = Cut(input.LabourStrength, 100);
             row.ProjectType = input.IsCurrent ? ProjectType.Current : ProjectType.Past;
             row.StartDate = MonthDate(input.StartYear, input.StartMonth) ?? (row.StartDate == default(DateTime) ? DateTime.Now : row.StartDate);
             row.EndDate = input.IsCurrent ? (DateTime?)null : MonthDate(input.EndYear, input.EndMonth);
+            if (input.IsCurrent) row.ExpectedEndDate = MonthDate(input.ExpectedEndYear, input.ExpectedEndMonth);
+            if (input.Sector != null) row.Sector = Cut(input.Sector, 100);
+            if (input.ManpowerSupplied.HasValue) row.ManpowerSupplied = Math.Max(0, input.ManpowerSupplied.Value);
+            if (input.IsActive.HasValue) row.IsActive = input.IsActive.Value;
+        }
+
+        /// <summary>.com saves the project "Client Name" in Duration; .in also writes ClientName.</summary>
+        public static string ClientNameOf(ContractorProject p)
+        {
+            return string.IsNullOrWhiteSpace(p.ClientName) ? p.Duration : p.ClientName;
+        }
+
+        public static List<string> GalleryUrls(ContractorProject p)
+        {
+            return (p.GalleryImages ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(file => ComFiles.ResolveStored(file.Trim(), "Projects"))
+                .Where(url => !string.IsNullOrEmpty(url))
+                .ToList();
         }
 
         public static object ToDto(ContractorProject p)
         {
+            var current = p.ProjectType == ProjectType.Current;
             return new
             {
                 id = p.Id.ToString(),
@@ -94,15 +123,19 @@ namespace Dashboards.Services
                 description = p.Description,
                 location = p.Location,
                 sector = p.Sector,
-                clientName = p.ClientName,
+                clientName = ClientNameOf(p),
                 labourStrength = p.LabourStrength,
-                status = p.ProjectType == ProjectType.Current ? "current" : "past",
-                isCurrent = p.ProjectType == ProjectType.Current,
+                manpowerSupplied = p.ManpowerSupplied,
+                status = current ? "current" : "past",
+                isCurrent = current,
                 isActive = p.IsActive,
                 startYear = p.StartDate.Year,
                 startMonth = p.StartDate.Month,
                 endYear = p.EndDate.HasValue ? p.EndDate.Value.Year : (int?)null,
-                endMonth = p.EndDate.HasValue ? p.EndDate.Value.Month : (int?)null
+                endMonth = p.EndDate.HasValue ? p.EndDate.Value.Month : (int?)null,
+                expectedEndYear = current && p.ExpectedEndDate.HasValue ? p.ExpectedEndDate.Value.Year : (int?)null,
+                expectedEndMonth = current && p.ExpectedEndDate.HasValue ? p.ExpectedEndDate.Value.Month : (int?)null,
+                images = GalleryUrls(p)
             };
         }
 

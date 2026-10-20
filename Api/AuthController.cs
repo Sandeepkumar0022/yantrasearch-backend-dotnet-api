@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Web.Http;
 using Dashboards.Data;
 using Dashboards.Enums;
@@ -97,6 +98,22 @@ namespace Dashboards.Api
             public string SubcategoryOther { get; set; }
             public string Note { get; set; }
             public string Title { get; set; }
+            /// <summary>The .com equipment form fields, for EQUIPMENT_AND_HEAVY_PLANT items.</summary>
+            public EquipmentInput Equipment { get; set; }
+        }
+
+        static bool IsEquipmentOffering(SupplierOfferingInput item)
+        {
+            return item != null && string.Equals((item.OfferingGroup ?? "").Trim(), "EQUIPMENT_AND_HEAVY_PLANT", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>The item's equipment fields with the item title and note as name and description.</summary>
+        static EquipmentInput RegistrationEquipment(SupplierOfferingInput item)
+        {
+            var input = item.Equipment ?? new EquipmentInput();
+            input.Title = FirstNonEmpty(item.Title, TrimOrNull(item.CategoryOther), input.Title);
+            if (input.Description == null) input.Description = TrimOrNull(item.Note);
+            return input;
         }
         public class RefreshBody { public string RefreshToken { get; set; } }
         public class ForgotBody { public string Email { get; set; } }
@@ -145,6 +162,15 @@ namespace Dashboards.Api
                 var workStates = ContractorFields.Join(body.WorkStates, null);
                 if (workStates != null && workStates.Length > ContractorFields.WorkLocationsMax)
                     throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, ContractorFields.WorkStatesTooLong);
+            }
+            if (javaRole == "SUPPLIER" && !string.Equals(NormalizeSupplierKind(body.SupplierKind), "materials", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var item in (body.Offerings ?? new List<SupplierOfferingInput>()).Where(IsEquipmentOffering))
+                {
+                    var invalid = EquipmentFields.Validate(RegistrationEquipment(item));
+                    if (invalid != null)
+                        throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, invalid);
+                }
             }
 
             using (var db = new ApplicationDbContext())
@@ -314,84 +340,91 @@ namespace Dashboards.Api
                 var user = db.Users.Find(userId);
                 if (user == null)
                     throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "User not found");
-                if (body.Name != null)
-                {
-                    var name = body.Name.Trim();
-                    if (name.Length == 0)
-                        throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Name is required");
-                    user.FullName = Cut(name, 150);
-                }
-                if (body.Phone != null)
-                {
-                    var phone = body.Phone.Trim();
-                    if (phone.Length > 0 && db.Users.Any(u => u.Id != userId && u.PhoneNumber == phone))
-                        throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "This phone number is already in use");
-                    user.PhoneNumber = phone;
-                }
-                var company = body.CompanyName == null ? null : body.CompanyName.Trim();
-                var role = JavaRole(db, user);
-                if (role == "SUPPLIER")
-                {
-                    var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
-                    if (profile != null)
-                    {
-                        if (body.Name != null)
-                        {
-                            profile.OwnerName = Cut(user.FullName, 150);
-                            profile.ContactPerson = Cut(user.FullName, 100);
-                        }
-                        if (body.Phone != null) profile.Mobile = Cut(user.PhoneNumber, 20);
-                        if (company != null)
-                        {
-                            if (company.Length == 0)
-                                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Company name is required");
-                            profile.CompanyName = Cut(company, 150);
-                        }
-                    }
-                }
-                else if (role == "CLIENT")
-                {
-                    var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == userId);
-                    if (profile != null)
-                    {
-                        if (body.Name != null)
-                        {
-                            profile.FullName = Cut(user.FullName, 150);
-                            profile.CompanyName = Cut(user.FullName, 200);
-                        }
-                        if (body.Phone != null) profile.Phone = Cut(user.PhoneNumber, 50);
-                    }
-                }
-                else if (role == "CONTRACTOR")
-                {
-                    var profile = db.ContractorProfiles.FirstOrDefault(p => p.UserId == userId);
-                    if (profile != null)
-                    {
-                        if (body.Name != null) profile.OwnerName = Cut(user.FullName, 150);
-                        if (body.Phone != null) profile.Mobile = Cut(user.PhoneNumber, 20);
-                        if (!string.IsNullOrEmpty(company)) profile.CompanyName = Cut(company, 150);
-                    }
-                }
-                else if (role == "JOB_SEEKER")
-                {
-                    var profile = db.EmployeeProfiles.FirstOrDefault(p => p.UserId == userId);
-                    if (profile != null && body.Name != null)
-                        profile.FullName = Cut(user.FullName, 150);
-                }
-                db.SaveChanges();
-                var savedCompany = company;
-                if (role == "SUPPLIER")
-                {
-                    var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
-                    savedCompany = profile == null ? company : profile.CompanyName;
-                }
-                else if (role == "CLIENT")
-                {
-                    var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == userId);
-                    savedCompany = profile == null ? user.FullName : profile.CompanyName;
-                }
-                return Ok(new { name = user.FullName, phone = user.PhoneNumber, companyName = savedCompany });
+                return Ok(ApplyAccount(Request, db, user, body));
             }
+        }
+
+        /// <summary>Name, phone, and company for any role. Shared by PATCH auth/profile and the admin profile editor.</summary>
+        internal static object ApplyAccount(HttpRequestMessage request, ApplicationDbContext db, ApplicationUser user, SelfProfileBody body)
+        {
+            var userId = user.Id;
+            if (body.Name != null)
+            {
+                var name = body.Name.Trim();
+                if (name.Length == 0)
+                    throw ApiResults.Problem(request, HttpStatusCode.BadRequest, "Name is required");
+                user.FullName = Cut(name, 150);
+            }
+            if (body.Phone != null)
+            {
+                var phone = body.Phone.Trim();
+                if (phone.Length > 0 && db.Users.Any(u => u.Id != userId && u.PhoneNumber == phone))
+                    throw ApiResults.Problem(request, HttpStatusCode.BadRequest, "This phone number is already in use");
+                user.PhoneNumber = phone;
+            }
+            var company = body.CompanyName == null ? null : body.CompanyName.Trim();
+            var role = JavaRole(db, user);
+            if (role == "SUPPLIER")
+            {
+                var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
+                if (profile != null)
+                {
+                    if (body.Name != null)
+                    {
+                        profile.OwnerName = Cut(user.FullName, 150);
+                        profile.ContactPerson = Cut(user.FullName, 100);
+                    }
+                    if (body.Phone != null) profile.Mobile = Cut(user.PhoneNumber, 20);
+                    if (company != null)
+                    {
+                        if (company.Length == 0)
+                            throw ApiResults.Problem(request, HttpStatusCode.BadRequest, "Company name is required");
+                        profile.CompanyName = Cut(company, 150);
+                    }
+                }
+            }
+            else if (role == "CLIENT")
+            {
+                var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == userId);
+                if (profile != null)
+                {
+                    if (body.Name != null)
+                    {
+                        profile.FullName = Cut(user.FullName, 150);
+                        profile.CompanyName = Cut(user.FullName, 200);
+                    }
+                    if (body.Phone != null) profile.Phone = Cut(user.PhoneNumber, 50);
+                }
+            }
+            else if (role == "CONTRACTOR")
+            {
+                var profile = db.ContractorProfiles.FirstOrDefault(p => p.UserId == userId);
+                if (profile != null)
+                {
+                    if (body.Name != null) profile.OwnerName = Cut(user.FullName, 150);
+                    if (body.Phone != null) profile.Mobile = Cut(user.PhoneNumber, 20);
+                    if (!string.IsNullOrEmpty(company)) profile.CompanyName = Cut(company, 150);
+                }
+            }
+            else if (role == "JOB_SEEKER")
+            {
+                var profile = db.EmployeeProfiles.FirstOrDefault(p => p.UserId == userId);
+                if (profile != null && body.Name != null)
+                    profile.FullName = Cut(user.FullName, 150);
+            }
+            db.SaveChanges();
+            var savedCompany = company;
+            if (role == "SUPPLIER")
+            {
+                var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
+                savedCompany = profile == null ? company : profile.CompanyName;
+            }
+            else if (role == "CLIENT")
+            {
+                var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == userId);
+                savedCompany = profile == null ? user.FullName : profile.CompanyName;
+            }
+            return new { name = user.FullName, phone = user.PhoneNumber, companyName = savedCompany };
         }
 
         [HttpPost, Route("change-password")]
@@ -568,7 +601,6 @@ namespace Dashboards.Api
                 db.VendorProfiles.Add(profile);
                 db.SaveChanges();
 
-                var location = FirstNonEmpty(body.ServiceLocations, JoinParts(body.City, body.State));
                 var equipmentCount = 0;
                 foreach (var item in body.Offerings ?? new List<SupplierOfferingInput>())
                 {
@@ -577,26 +609,23 @@ namespace Dashboards.Api
                     var category = string.IsNullOrWhiteSpace(item.Category) ? "OTHER" : item.Category.Trim();
                     var categoryOther = TrimOrNull(item.CategoryOther);
                     var note = TrimOrNull(item.Note);
-                    var title = FirstNonEmpty(item.Title, categoryOther, category);
                     if (string.Equals(group, "EQUIPMENT_AND_HEAVY_PLANT", StringComparison.OrdinalIgnoreCase))
                     {
                         if (string.Equals(profile.SupplierKind, "materials", StringComparison.OrdinalIgnoreCase))
                             continue;
-                        var equipmentName = Cut(string.IsNullOrWhiteSpace(title) ? "Equipment" : title, 100);
+                        var fields = RegistrationEquipment(item);
+                        var equipmentName = Cut(fields.Title, 100);
                         var equipment = new Equipment
                         {
                             VendorId = profile.Id,
                             Name = equipmentName,
                             Category = Cut(string.IsNullOrWhiteSpace(item.Category) ? EquipmentCatalog.CategoryFor(equipmentName) : category, 255),
                             ThumbnailUrl = EquipmentCatalog.ThumbFor(equipmentName),
-                            Description = note,
-                            Location = Cut(location, 255),
-                            IsAvailable = true,
-                            Status = "AVAILABLE",
                             CreatedAt = DateTime.Now,
                             UpdatedAt = DateTime.Now,
                             UpdatedByName = Cut(actor, 150)
                         };
+                        EquipmentFields.Apply(equipment, fields);
                         db.Equipments.Add(equipment);
                         db.SaveChanges();
                         created.Add(new { id = equipment.Id.ToString(), kind = "equipment" });

@@ -17,16 +17,6 @@ namespace Dashboards.Api
     [RoutePrefix("api/v1")]
     public class JavaParityController : ApiController
     {
-        public class EquipmentPatch
-        {
-            public string EquipmentCategoryCode { get; set; }
-            public string Title { get; set; }
-            public string Description { get; set; }
-            public string AvailabilityStatus { get; set; }
-            public string Location { get; set; }
-            public decimal? RatePerDay { get; set; }
-        }
-
         public class ImageBody
         {
             public string Url { get; set; }
@@ -73,45 +63,43 @@ namespace Dashboards.Api
                 var row = db.Equipments.Include("VendorProfile")
                     .FirstOrDefault(e => e.Id == id && (e.Status == null || e.Status != "DELETED"));
                 if (row == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Equipment not found");
+                if (!EquipmentFields.IsPublic(row))
+                {
+                    var userId = CurrentUser.Id(this);
+                    var owner = row.VendorProfile != null && !string.IsNullOrEmpty(userId) && row.VendorProfile.UserId == userId;
+                    if (!owner && !CurrentUser.Is(this, "ADMIN"))
+                        throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Equipment not found");
+                }
                 return Ok(MarketplaceController.EquipmentDto(row));
             }
         }
 
+        /// <summary>Saves the whole .com equipment form; every field is replaced.</summary>
         [HttpPatch, Route("equipment/{id:int}")]
-        public IHttpActionResult PatchEquipment(int id, EquipmentPatch body)
+        public IHttpActionResult PatchEquipment(int id, EquipmentInput body)
         {
             var userId = Require("SUPPLIER", "ADMIN");
+            var invalid = EquipmentFields.Validate(body);
+            if (invalid != null)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, invalid);
             using (var db = new ApplicationDbContext())
             {
                 var row = OwnedEquipment(db, id, userId);
-                if (body != null)
+                var title = body.Title.Trim();
+                if (title.Length > 100) title = title.Substring(0, 100);
+                var renamed = !string.Equals(row.Name, title, StringComparison.OrdinalIgnoreCase);
+                row.Name = title;
+                var known = renamed && body.EquipmentCategoryCode == null ? EquipmentCatalog.Find(title) : null;
+                if (known != null)
                 {
-                    if (!string.IsNullOrWhiteSpace(body.Title))
-                    {
-                        var title = body.Title.Trim();
-                        if (title.Length > 100) title = title.Substring(0, 100);
-                        var renamed = !string.Equals(row.Name, title, StringComparison.OrdinalIgnoreCase);
-                        row.Name = title;
-                        var known = renamed && body.EquipmentCategoryCode == null ? EquipmentCatalog.Find(title) : null;
-                        if (known != null)
-                        {
-                            row.Category = known.Category;
-                            row.ThumbnailUrl = known.Thumb;
-                        }
-                    }
-                    if (body.EquipmentCategoryCode != null) row.Category = body.EquipmentCategoryCode.Trim();
-                    if (body.Description != null) row.Description = body.Description;
-                    if (body.Location != null) row.Location = body.Location;
-                    if (body.RatePerDay.HasValue) row.RentalRatePerDay = body.RatePerDay;
-                    if (body.AvailabilityStatus != null)
-                    {
-                        row.Status = body.AvailabilityStatus;
-                        row.IsAvailable = !string.Equals(body.AvailabilityStatus, "UNAVAILABLE", StringComparison.OrdinalIgnoreCase);
-                    }
-                    row.UpdatedAt = DateTime.Now;
-                    row.UpdatedByName = MarketplaceController.ActorName(db, userId);
-                    db.SaveChanges();
+                    row.Category = known.Category;
+                    row.ThumbnailUrl = known.Thumb;
                 }
+                if (!string.IsNullOrWhiteSpace(body.EquipmentCategoryCode)) row.Category = body.EquipmentCategoryCode.Trim();
+                EquipmentFields.Apply(row, body);
+                row.UpdatedAt = DateTime.Now;
+                row.UpdatedByName = MarketplaceController.ActorName(db, userId);
+                db.SaveChanges();
                 return Ok(MarketplaceController.EquipmentDto(row));
             }
         }
@@ -410,20 +398,98 @@ namespace Dashboards.Api
             }
         }
 
+        /// <summary>Image1Url, Image2Url or Image3Url (slot 1 to 3; .com allows up to 3 images).</summary>
         [HttpPost, Route("equipment/{id:int}/image")]
-        public IHttpActionResult UploadEquipmentImage(int id)
+        public IHttpActionResult UploadEquipmentImage(int id, int slot = 1)
         {
             var userId = Require("SUPPLIER", "ADMIN");
+            CheckSlot(slot);
             var file = PostedImage();
             using (var db = new ApplicationDbContext())
             {
                 var row = OwnedEquipment(db, id, userId);
-                row.Image1Url = ComFiles.SaveNamed(file, "Equipments", "EQ");
+                SetImage(row, slot, ComFiles.SaveNamed(file, "Equipments", "EQ"));
                 row.UpdatedAt = DateTime.Now;
                 row.UpdatedByName = MarketplaceController.ActorName(db, userId);
                 db.SaveChanges();
                 return Ok(MarketplaceController.EquipmentDto(row));
             }
+        }
+
+        /// <summary>Clears the slot. The file stays in Uploads/Equipments.</summary>
+        [HttpDelete, Route("equipment/{id:int}/image")]
+        public IHttpActionResult ClearEquipmentImage(int id, int slot = 1)
+        {
+            var userId = Require("SUPPLIER", "ADMIN");
+            CheckSlot(slot);
+            using (var db = new ApplicationDbContext())
+            {
+                var row = OwnedEquipment(db, id, userId);
+                SetImage(row, slot, null);
+                row.UpdatedAt = DateTime.Now;
+                row.UpdatedByName = MarketplaceController.ActorName(db, userId);
+                db.SaveChanges();
+                return Ok(MarketplaceController.EquipmentDto(row));
+            }
+        }
+
+        /// <summary>Equipment document (PDF/DOC/DOCX), stored like .com: "/Uploads/Equipments/{name}".</summary>
+        [HttpPost, Route("equipment/{id:int}/document")]
+        public IHttpActionResult UploadEquipmentDocument(int id)
+        {
+            var userId = Require("SUPPLIER", "ADMIN");
+            var file = PostedDocument(new[] { ".pdf", ".doc", ".docx" }, "File must be a PDF or Word document");
+            using (var db = new ApplicationDbContext())
+            {
+                var row = OwnedEquipment(db, id, userId);
+                row.EquipmentDocUrl = "/Uploads/Equipments/" + ComFiles.SaveNamed(file, "Equipments", "DOC");
+                row.UpdatedAt = DateTime.Now;
+                row.UpdatedByName = MarketplaceController.ActorName(db, userId);
+                db.SaveChanges();
+                return Ok(MarketplaceController.EquipmentDto(row));
+            }
+        }
+
+        [HttpDelete, Route("equipment/{id:int}/document")]
+        public IHttpActionResult ClearEquipmentDocument(int id)
+        {
+            var userId = Require("SUPPLIER", "ADMIN");
+            using (var db = new ApplicationDbContext())
+            {
+                var row = OwnedEquipment(db, id, userId);
+                row.EquipmentDocUrl = null;
+                row.UpdatedAt = DateTime.Now;
+                row.UpdatedByName = MarketplaceController.ActorName(db, userId);
+                db.SaveChanges();
+                return Ok(MarketplaceController.EquipmentDto(row));
+            }
+        }
+
+        void CheckSlot(int slot)
+        {
+            if (slot < 1 || slot > 3)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Image slot must be 1, 2 or 3");
+        }
+
+        static void SetImage(Equipment row, int slot, string value)
+        {
+            if (slot == 1) row.Image1Url = value;
+            else if (slot == 2) row.Image2Url = value;
+            else row.Image3Url = value;
+        }
+
+        System.Web.HttpPostedFile PostedDocument(string[] extensions, string typeMessage)
+        {
+            var http = System.Web.HttpContext.Current == null ? null : System.Web.HttpContext.Current.Request;
+            var file = http == null ? null : http.Files["file"];
+            if (file == null || file.ContentLength <= 0)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Choose a file");
+            if (file.ContentLength > 8 * 1024 * 1024)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "File must be 8 MB or smaller");
+            var ext = (System.IO.Path.GetExtension(file.FileName) ?? "").ToLowerInvariant();
+            if (!extensions.Contains(ext))
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, typeMessage);
+            return file;
         }
 
         System.Web.HttpPostedFile PostedImage()

@@ -14,17 +14,26 @@ namespace Dashboards.Api
     public class MarketplaceController : ApiController
     {
         [HttpGet, Route("equipment")]
-        public IHttpActionResult Equipment(int size = 500)
+        public IHttpActionResult Equipment(int size = 500, bool all = false)
         {
+            var includeHidden = all && CurrentUser.Is(this, "ADMIN");
             using (var db = new ApplicationDbContext())
             {
                 var rows = db.Equipments.Include("VendorProfile")
                     .Where(e => e.Status == null || e.Status != "DELETED")
                     .OrderBy(e => e.Name)
+                    .ToList()
+                    .Where(e => includeHidden || EquipmentFields.IsPublic(e))
                     .Take(Math.Min(size, 500))
                     .ToList();
                 return Ok(Page(rows.Select(EquipmentDto)));
             }
+        }
+
+        [HttpGet, Route("equipment/locations")]
+        public IHttpActionResult EquipmentLocations()
+        {
+            return Ok(CityCatalog.All().Select(c => new { value = c.Value, label = c.Label }).ToList());
         }
 
         [HttpGet, Route("equipment/suggestions")]
@@ -55,24 +64,15 @@ namespace Dashboards.Api
             }
         }
 
-        public class EquipmentBody
-        {
-            public string EquipmentCategoryCode { get; set; }
-            public string Title { get; set; }
-            public string Description { get; set; }
-            public string AvailabilityStatus { get; set; }
-            public string Location { get; set; }
-            public decimal? RatePerDay { get; set; }
-        }
-
         [HttpPost, Route("equipment")]
-        public IHttpActionResult CreateEquipment(EquipmentBody body)
+        public IHttpActionResult CreateEquipment(EquipmentInput body)
         {
             var userId = RequireUser();
             if (!CurrentUser.Is(this, "SUPPLIER", "ADMIN"))
                 throw ApiResults.Problem(Request, HttpStatusCode.Forbidden, "Supplier account required");
-            if (body == null || string.IsNullOrWhiteSpace(body.Title))
-                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Title is required");
+            var invalid = EquipmentFields.Validate(body);
+            if (invalid != null)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, invalid);
             using (var db = new ApplicationDbContext())
             {
                 var vendor = db.VendorProfiles.FirstOrDefault(v => v.UserId == userId);
@@ -91,15 +91,11 @@ namespace Dashboards.Api
                     Name = title,
                     Category = category,
                     ThumbnailUrl = EquipmentCatalog.ThumbFor(title),
-                    Description = body.Description,
-                    Location = body.Location,
-                    RentalRatePerDay = body.RatePerDay,
-                    IsAvailable = !string.Equals(body.AvailabilityStatus, "UNAVAILABLE", StringComparison.OrdinalIgnoreCase),
-                    Status = string.IsNullOrWhiteSpace(body.AvailabilityStatus) ? "AVAILABLE" : body.AvailabilityStatus,
                     CreatedAt = DateTime.Now,
                     UpdatedAt = DateTime.Now,
                     UpdatedByName = ActorName(db, userId)
                 };
+                EquipmentFields.Apply(row, body);
                 db.Equipments.Add(row);
                 db.SaveChanges();
                 row.VendorProfile = vendor;
@@ -203,7 +199,13 @@ namespace Dashboards.Api
                 specification = e.Specification,
                 capacity = e.Capacity,
                 condition = e.Condition,
-                availabilityStatus = e.IsAvailable ? "AVAILABLE" : "UNAVAILABLE",
+                availabilityStatus = e.IsAvailable || e.IsAvailableForSale ? "AVAILABLE" : "UNAVAILABLE",
+                isAvailableForRent = e.IsAvailable,
+                isAvailableForSale = e.IsAvailableForSale,
+                status = EquipmentFields.DisplayStatus(e),
+                equipmentDocUrl = string.IsNullOrWhiteSpace(e.EquipmentDocUrl) ? null : EquipmentImageUrl(e.EquipmentDocUrl.Trim()),
+                imageSlots = new[] { e.Image1Url, e.Image2Url, e.Image3Url }
+                    .Select(u => string.IsNullOrWhiteSpace(u) ? null : EquipmentImageUrl(u.Trim())).ToList(),
                 images,
                 updatedAt = e.UpdatedAt,
                 updatedBy = e.UpdatedByName
@@ -216,7 +218,7 @@ namespace Dashboards.Api
             images.Add(new { id = id + "-" + order, url = EquipmentImageUrl(url), sortOrder = order });
         }
 
-        static string EquipmentImageUrl(string url)
+        internal static string EquipmentImageUrl(string url)
         {
             if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || url.Contains("/"))
                 return PublicUrl(url);
@@ -301,24 +303,12 @@ namespace Dashboards.Api
                 skills,
                 ownerName = c.OwnerName,
                 contactPerson = c.ContactPerson,
-                phone = c.Mobile,
-                email = c.Email,
                 website = c.Website,
                 laborStrength = c.LaborStrength,
                 workLocations = c.WorkLocations,
                 sectors = c.WorkingSectors,
                 hasNoPriorProjects = c.HasNoPriorProjects,
-                projects = (projects ?? new List<ContractorProject>()).Select(p => new
-                {
-                    id = p.Id.ToString(),
-                    title = p.Title,
-                    description = p.Description,
-                    location = p.Location,
-                    sector = p.Sector,
-                    clientName = p.ClientName,
-                    labourStrength = p.LabourStrength,
-                    status = p.ProjectType == ProjectType.Current ? "current" : "past"
-                }).ToList()
+                projects = (projects ?? new List<ContractorProject>()).Select(ContractorFields.ToDto).ToList()
             };
         }
 

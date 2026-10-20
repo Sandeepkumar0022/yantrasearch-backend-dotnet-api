@@ -37,6 +37,8 @@ namespace Dashboards.Services
                         SupplierItemSchema.AddColumn(db, "ContractorProfile", "HasNoPriorProjects", "TINYINT(1) NOT NULL DEFAULT 0");
                         SupplierItemSchema.AddColumn(db, "ContractorProject", "ClientName", "VARCHAR(200) NULL");
                         SupplierItemSchema.AddColumn(db, "ContractorProject", "LabourStrength", "VARCHAR(100) NULL");
+                        SupplierItemSchema.WidenVarchar(db, "VendorProfile", "GSTIN_File", 255);
+                        SupplierItemSchema.WidenVarchar(db, "VendorProfile", "PAN_File", 255);
                         db.Database.SqlQuery<string>("SELECT CurrentCtcText FROM EmployeeProfile WHERE 1 = 0").ToList();
                         db.Database.SqlQuery<string>("SELECT PinCode FROM EmployeeProfile WHERE 1 = 0").ToList();
                         db.Database.SqlQuery<bool>("SELECT HasNoPriorProjects FROM ContractorProfile WHERE 1 = 0").ToList();

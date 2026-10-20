@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Web.Http;
 using Dashboards.Data;
 using Dashboards.Models;
@@ -30,6 +31,8 @@ namespace Dashboards.Api
             public string WorkSpecialisation { get; set; }
             public bool? HasNoPriorProjects { get; set; }
             public List<ContractorProjectInput> Projects { get; set; }
+            public string Gstin { get; set; }
+            public string Pan { get; set; }
         }
 
         [HttpGet, Route("profile")]
@@ -59,57 +62,70 @@ namespace Dashboards.Api
                 if (user == null || profile == null)
                     throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
 
-                if (string.IsNullOrWhiteSpace(profile.OwnerName))
-                    profile.OwnerName = Cut(user.FullName, 150) ?? "Contractor";
-                if (body.Address != null) profile.Location = Cut(body.Address, 255);
-                if (body.City != null) profile.City = Cut(body.City, 128);
-                if (body.State != null) profile.State = Cut(body.State, 128);
-                if (body.Pincode != null) profile.Pin = Cut(body.Pincode, 45);
-                if (body.WorkStates != null)
-                {
-                    var joined = ContractorFields.Join(body.WorkStates, null);
-                    if (joined != null && joined.Length > ContractorFields.WorkLocationsMax)
-                        throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, ContractorFields.WorkStatesTooLong);
-                    profile.WorkLocations = joined;
-                }
-                if (body.ContractorTypes != null) profile.ContractorType = ContractorFields.Join(body.ContractorTypes, body.ContractorTypeOther);
-                if (body.WorkingSectors != null) profile.WorkingSectors = ContractorFields.Join(body.WorkingSectors, body.WorkingSectorOther);
-                if (body.LabourStrength != null) profile.LaborStrength = Cut(body.LabourStrength, 50);
-                if (body.WorkExperience.HasValue) profile.WorkExperience = Math.Max(0, body.WorkExperience.Value);
-                if (body.WorkSpecialisation != null) profile.SpecificWorkDetail = string.IsNullOrWhiteSpace(body.WorkSpecialisation) ? null : body.WorkSpecialisation.Trim();
-
-                if (body.Projects != null)
-                {
-                    var incoming = body.Projects.Where(p => p != null && !ContractorFields.IsBlank(p)).ToList();
-                    var keep = new HashSet<int>(incoming.Where(p => p.Id.HasValue).Select(p => p.Id.Value));
-                    var existing = db.ContractorProjects.Where(p => p.ContractorId == profile.Id).ToList();
-                    foreach (var row in existing.Where(r => !keep.Contains(r.Id)).ToList())
-                        db.ContractorProjects.Remove(row);
-                    foreach (var item in incoming)
-                    {
-                        if (item.Id.HasValue)
-                        {
-                            var row = existing.FirstOrDefault(r => r.Id == item.Id.Value);
-                            if (row != null) ContractorFields.Apply(row, item);
-                        }
-                        else
-                        {
-                            db.ContractorProjects.Add(ContractorFields.NewProject(profile.Id, item));
-                        }
-                    }
-                    db.SaveChanges();
-                }
-
-                var projectCount = db.ContractorProjects.Count(p => p.ContractorId == profile.Id);
-                if (body.HasNoPriorProjects.HasValue)
-                    profile.HasNoPriorProjects = body.HasNoPriorProjects.Value && projectCount == 0;
-                else if (projectCount > 0)
-                    profile.HasNoPriorProjects = false;
-
-                profile.UpdatedAt = DateTime.Now;
-                db.SaveChanges();
+                ApplyProfile(Request, db, user, profile, body);
                 return Ok(Read(db, user, profile));
             }
+        }
+
+        /// <summary>Contractor business details and projects. Shared with the admin profile editor; saves the changes.</summary>
+        internal static void ApplyProfile(HttpRequestMessage request, ApplicationDbContext db, ApplicationUser user, ContractorProfile profile, ProfileBody body)
+        {
+            if (string.IsNullOrWhiteSpace(profile.OwnerName))
+                profile.OwnerName = Cut(user.FullName, 150) ?? "Contractor";
+            if (body.Address != null) profile.Location = Cut(body.Address, 255);
+            if (body.City != null) profile.City = Cut(body.City, 128);
+            if (body.State != null) profile.State = Cut(body.State, 128);
+            if (body.Pincode != null) profile.Pin = Cut(body.Pincode, 45);
+            if (body.WorkStates != null)
+            {
+                var joined = ContractorFields.Join(body.WorkStates, null);
+                if (joined != null && joined.Length > ContractorFields.WorkLocationsMax)
+                    throw ApiResults.Problem(request, HttpStatusCode.BadRequest, ContractorFields.WorkStatesTooLong);
+                profile.WorkLocations = joined;
+            }
+            if (body.ContractorTypes != null) profile.ContractorType = ContractorFields.Join(body.ContractorTypes, body.ContractorTypeOther);
+            if (body.WorkingSectors != null) profile.WorkingSectors = ContractorFields.Join(body.WorkingSectors, body.WorkingSectorOther);
+            if (body.LabourStrength != null) profile.LaborStrength = Cut(body.LabourStrength, 50);
+            if (body.WorkExperience.HasValue) profile.WorkExperience = Math.Max(0, body.WorkExperience.Value);
+            if (body.WorkSpecialisation != null) profile.SpecificWorkDetail = string.IsNullOrWhiteSpace(body.WorkSpecialisation) ? null : body.WorkSpecialisation.Trim();
+            var gstin = TaxDocumentsController.NormalizeNumber(body.Gstin);
+            var pan = TaxDocumentsController.NormalizeNumber(body.Pan);
+            var invalidNumber = TaxDocumentsController.NumberError(gstin, TaxDocumentsController.GstinMax, "GSTIN")
+                ?? TaxDocumentsController.NumberError(pan, TaxDocumentsController.PanMax, "PAN");
+            if (invalidNumber != null) throw ApiResults.Problem(request, HttpStatusCode.BadRequest, invalidNumber);
+            if (gstin != null) profile.GSTIN = gstin.Length == 0 ? null : gstin;
+            if (pan != null) profile.PAN = pan.Length == 0 ? null : pan;
+
+            if (body.Projects != null)
+            {
+                var incoming = body.Projects.Where(p => p != null && !ContractorFields.IsBlank(p)).ToList();
+                var keep = new HashSet<int>(incoming.Where(p => p.Id.HasValue).Select(p => p.Id.Value));
+                var existing = db.ContractorProjects.Where(p => p.ContractorId == profile.Id).ToList();
+                foreach (var row in existing.Where(r => !keep.Contains(r.Id)).ToList())
+                    db.ContractorProjects.Remove(row);
+                foreach (var item in incoming)
+                {
+                    if (item.Id.HasValue)
+                    {
+                        var row = existing.FirstOrDefault(r => r.Id == item.Id.Value);
+                        if (row != null) ContractorFields.Apply(row, item);
+                    }
+                    else
+                    {
+                        db.ContractorProjects.Add(ContractorFields.NewProject(profile.Id, item));
+                    }
+                }
+                db.SaveChanges();
+            }
+
+            var projectCount = db.ContractorProjects.Count(p => p.ContractorId == profile.Id);
+            if (body.HasNoPriorProjects.HasValue)
+                profile.HasNoPriorProjects = body.HasNoPriorProjects.Value && projectCount == 0;
+            else if (projectCount > 0)
+                profile.HasNoPriorProjects = false;
+
+            profile.UpdatedAt = DateTime.Now;
+            db.SaveChanges();
         }
 
         string RequireContractor()
@@ -122,7 +138,7 @@ namespace Dashboards.Api
             return id;
         }
 
-        static object Read(ApplicationDbContext db, ApplicationUser user, ContractorProfile profile)
+        internal static object Read(ApplicationDbContext db, ApplicationUser user, ContractorProfile profile)
         {
             var projects = db.ContractorProjects.Where(p => p.ContractorId == profile.Id)
                 .OrderByDescending(p => p.StartDate).ToList();
@@ -143,6 +159,10 @@ namespace Dashboards.Api
                 workExperience = profile.WorkExperience,
                 workSpecialisation = profile.SpecificWorkDetail,
                 hasNoPriorProjects = profile.HasNoPriorProjects,
+                gstin = profile.GSTIN,
+                pan = profile.PAN,
+                gstinFileUrl = TaxDocumentsController.FileUrl(profile.GSTIN_File),
+                panFileUrl = TaxDocumentsController.FileUrl(profile.PAN_File),
                 logoUrl = ComFiles.UserPhoto(user),
                 projects = projects.Select(ContractorFields.ToDto).ToList()
             };

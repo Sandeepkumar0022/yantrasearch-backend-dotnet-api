@@ -178,5 +178,37 @@ namespace Dashboards.Services
                 // The column is already there, or this login cannot change the table.
             }
         }
+
+        /// <summary>Declared length of a VARCHAR column, or null when it cannot be read.</summary>
+        internal static long? ColumnLength(ApplicationDbContext db, string table, string column)
+        {
+            try
+            {
+                return db.Database.SqlQuery<long?>(
+                    "SELECT CAST(CHARACTER_MAXIMUM_LENGTH AS SIGNED) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {0} AND COLUMN_NAME = {1}",
+                    table, column).FirstOrDefault();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Makes a nullable VARCHAR column at least the given length. Never shortens it.</summary>
+        internal static void WidenVarchar(ApplicationDbContext db, string table, string column, int length)
+        {
+            var current = ColumnLength(db, table, column);
+            if (!current.HasValue || current.Value >= length) return;
+            try
+            {
+                db.Database.ExecuteSqlCommand(
+                    TransactionalBehavior.DoNotEnsureTransaction,
+                    "ALTER TABLE `" + table + "` MODIFY COLUMN `" + column + "` VARCHAR(" + length + ") NULL");
+            }
+            catch
+            {
+                // This login cannot change the table; PreDeploy_In_To_Com_MySQL.sql does the same change.
+            }
+        }
     }
 }

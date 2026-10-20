@@ -420,6 +420,100 @@ namespace Dashboards.Api
             }
         }
 
+        /// <summary>Same bodies the users send from their own dashboards; null parts are left unchanged.</summary>
+        public class ProfileDetailsBody
+        {
+            public AuthController.SelfProfileBody Account { get; set; }
+            /// <summary>Clients and suppliers (api/v1/users/me/profile body).</summary>
+            public MyProfileController.ProfileBody Profile { get; set; }
+            public ContractorController.ProfileBody Contractor { get; set; }
+            public JobSeekerController.ProfileBody JobSeeker { get; set; }
+        }
+
+        [HttpGet, Route("admin/user-profiles/{userId}/details")]
+        public IHttpActionResult UserProfileDetails(string userId)
+        {
+            Require("ADMIN");
+            ProfileSchema.Ensure();
+            using (var db = new ApplicationDbContext())
+            {
+                var user = db.Users.Find(userId);
+                if (user == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "User not found");
+                return Ok(ReadDetails(db, user));
+            }
+        }
+
+        [HttpPatch, Route("admin/user-profiles/{userId}/details")]
+        public IHttpActionResult PatchUserProfileDetails(string userId, ProfileDetailsBody body)
+        {
+            Require("ADMIN");
+            if (body == null)
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Profile details are required");
+            ProfileSchema.Ensure();
+            using (var db = new ApplicationDbContext())
+            {
+                var user = db.Users.Find(userId);
+                if (user == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "User not found");
+                var role = AuthController.JavaRole(db, user);
+                if (role == "ADMIN")
+                    throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Admin accounts are not edited here");
+                var createdCertificates = new List<object>();
+                using (var tx = db.Database.BeginTransaction())
+                {
+                    if (body.Account != null) AuthController.ApplyAccount(Request, db, user, body.Account);
+                    if (role == "CLIENT" && body.Profile != null)
+                    {
+                        MyProfileController.ApplyClient(Request, db, user.Id, body.Profile);
+                    }
+                    else if (role == "SUPPLIER" && body.Profile != null)
+                    {
+                        MyProfileController.ApplyVendor(Request, db, user.Id, body.Profile);
+                    }
+                    else if (role == "CONTRACTOR" && body.Contractor != null)
+                    {
+                        var profile = db.ContractorProfiles.FirstOrDefault(c => c.UserId == user.Id);
+                        if (profile == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
+                        ContractorController.ApplyProfile(Request, db, user, profile, body.Contractor);
+                    }
+                    else if (role == "JOB_SEEKER" && body.JobSeeker != null)
+                    {
+                        var profile = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == user.Id);
+                        if (profile == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
+                        createdCertificates = JobSeekerController.ApplyProfile(db, user, profile, body.JobSeeker);
+                    }
+                    db.SaveChanges();
+                    tx.Commit();
+                }
+                return Ok(new { details = ReadDetails(db, user), createdCertificates });
+            }
+        }
+
+        static object ReadDetails(ApplicationDbContext db, ApplicationUser user)
+        {
+            var role = AuthController.JavaRole(db, user);
+            object profile = null;
+            if (role == "CLIENT" || role == "SUPPLIER")
+            {
+                profile = MyProfileController.Read(db, user.Id);
+            }
+            else if (role == "CONTRACTOR")
+            {
+                var row = db.ContractorProfiles.FirstOrDefault(c => c.UserId == user.Id);
+                if (row != null) profile = ContractorController.Read(db, user, row);
+            }
+            else if (role == "JOB_SEEKER")
+            {
+                var row = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == user.Id);
+                if (row != null) profile = JobSeekerController.Read(db, user, row);
+            }
+            return new
+            {
+                role,
+                account = new { name = user.FullName, phone = user.PhoneNumber, email = user.Email },
+                profile
+            };
+        }
+
         public class EmailBody
         {
             public string Subject { get; set; }
@@ -549,39 +643,57 @@ namespace Dashboards.Api
             {
                 var rows = db.ContractorProjects.Include("Contractor").Include("Contractor.User")
                     .OrderByDescending(p => p.CreatedAt).Take(500).ToList();
-                return Ok(rows.Select(p =>
-                {
-                    var contractor = p.Contractor;
-                    var name = contractor == null
-                        ? ""
-                        : (!string.IsNullOrWhiteSpace(contractor.CompanyName) ? contractor.CompanyName : contractor.OwnerName);
-                    if (contractor != null && contractor.User != null && string.IsNullOrWhiteSpace(name))
-                        name = contractor.User.FullName;
-                    var images = (p.GalleryImages ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
-                        .Select(file => ComFiles.ResolveStored(file.Trim(), "Projects"))
-                        .Where(url => !string.IsNullOrEmpty(url))
-                        .ToList();
-                    return new
-                    {
-                        id = p.Id.ToString(),
-                        contractorUserId = contractor == null ? null : contractor.UserId,
-                        contractorName = name,
-                        title = p.Title,
-                        description = p.Description,
-                        location = p.Location,
-                        sector = p.Sector,
-                        clientName = p.ClientName,
-                        labourStrength = p.LabourStrength,
-                        manpowerSupplied = p.ManpowerSupplied,
-                        duration = p.Duration,
-                        status = p.ProjectType == ProjectType.Current ? "current" : "past",
-                        startDate = p.StartDate,
-                        endDate = p.EndDate,
-                        expectedEndDate = p.ExpectedEndDate,
-                        createdAt = p.CreatedAt,
-                        images
-                    };
-                }).ToList());
+                return Ok(rows.Select(AdminProjectDto).ToList());
+            }
+        }
+
+        static object AdminProjectDto(ContractorProject p)
+        {
+            var contractor = p.Contractor;
+            var name = contractor == null
+                ? ""
+                : (!string.IsNullOrWhiteSpace(contractor.CompanyName) ? contractor.CompanyName : contractor.OwnerName);
+            if (contractor != null && contractor.User != null && string.IsNullOrWhiteSpace(name))
+                name = contractor.User.FullName;
+            return new
+            {
+                id = p.Id.ToString(),
+                contractorUserId = contractor == null ? null : contractor.UserId,
+                contractorName = name,
+                title = p.Title,
+                description = p.Description,
+                location = p.Location,
+                sector = p.Sector,
+                clientName = ContractorFields.ClientNameOf(p),
+                labourStrength = p.LabourStrength,
+                manpowerSupplied = p.ManpowerSupplied,
+                duration = p.Duration,
+                status = p.ProjectType == ProjectType.Current ? "current" : "past",
+                isActive = p.IsActive,
+                startDate = p.StartDate,
+                endDate = p.EndDate,
+                expectedEndDate = p.ExpectedEndDate,
+                createdAt = p.CreatedAt,
+                images = ContractorFields.GalleryUrls(p),
+                project = ContractorFields.ToDto(p)
+            };
+        }
+
+        /// <summary>Saves one contractor project with the same fields as the contractor dashboard.</summary>
+        [HttpPatch, Route("admin/contractor-projects/{id:int}")]
+        public IHttpActionResult PatchContractorProject(int id, ContractorProjectInput body)
+        {
+            Require("ADMIN");
+            if (body == null || ContractorFields.IsBlank(body))
+                throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Project details are required");
+            using (var db = new ApplicationDbContext())
+            {
+                var row = db.ContractorProjects.Include("Contractor").Include("Contractor.User").FirstOrDefault(p => p.Id == id);
+                if (row == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Project not found");
+                ContractorFields.Apply(row, body);
+                if (row.Contractor != null) row.Contractor.UpdatedAt = DateTime.Now;
+                db.SaveChanges();
+                return Ok(AdminProjectDto(row));
             }
         }
 

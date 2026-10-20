@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Web.Http;
 using Dashboards.Data;
 using Dashboards.Security;
@@ -23,6 +24,9 @@ namespace Dashboards.Api
             public string Pincode { get; set; }
             public string ServiceLocations { get; set; }
             public string YearOfEstablishment { get; set; }
+            /// <summary>Suppliers only.</summary>
+            public string Gstin { get; set; }
+            public string Pan { get; set; }
         }
 
         [HttpGet, Route("")]
@@ -43,33 +47,52 @@ namespace Dashboards.Api
             {
                 if (CurrentUser.Is(this, "CLIENT"))
                 {
-                    var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == userId);
-                    if (profile == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
-                    if (body.Address != null) profile.AddressLine1 = Cut(body.Address, 255);
-                    if (body.City != null) profile.City = Cut(body.City, 100);
-                    if (body.State != null) profile.State = Cut(body.State, 100);
-                    if (body.Pincode != null) profile.PinCode = Cut(body.Pincode, 20);
+                    ApplyClient(Request, db, userId, body);
                 }
                 else
                 {
-                    var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
-                    if (profile == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
-                    if (string.IsNullOrWhiteSpace(profile.OwnerName))
-                    {
-                        var user = db.Users.Find(userId);
-                        profile.OwnerName = Cut(user == null ? null : user.FullName, 150) ?? "Supplier";
-                    }
-                    if (body.Address != null) profile.AddressLine1 = Cut(body.Address, 255);
-                    if (body.City != null) profile.City = Cut(body.City, 100);
-                    if (body.State != null) profile.State = Cut(body.State, 100);
-                    if (body.Pincode != null) profile.PinCode = Cut(body.Pincode, 10);
-                    if (body.ServiceLocations != null) profile.ServiceLocations = string.IsNullOrWhiteSpace(body.ServiceLocations) ? null : body.ServiceLocations.Trim();
-                    if (body.YearOfEstablishment != null) profile.YearOfEstablishment = Cut(body.YearOfEstablishment, 10);
-                    profile.UpdatedAt = DateTime.Now;
+                    ApplyVendor(Request, db, userId, body);
                 }
                 db.SaveChanges();
                 return Ok(Read(db, userId));
             }
+        }
+
+        /// <summary>Client address. Shared with the admin profile editor; the caller saves.</summary>
+        internal static void ApplyClient(HttpRequestMessage request, ApplicationDbContext db, string userId, ProfileBody body)
+        {
+            var profile = db.ClientProfiles.FirstOrDefault(p => p.UserId == userId);
+            if (profile == null) throw ApiResults.Problem(request, HttpStatusCode.NotFound, "Profile not found");
+            if (body.Address != null) profile.AddressLine1 = Cut(body.Address, 255);
+            if (body.City != null) profile.City = Cut(body.City, 100);
+            if (body.State != null) profile.State = Cut(body.State, 100);
+            if (body.Pincode != null) profile.PinCode = Cut(body.Pincode, 20);
+        }
+
+        /// <summary>Supplier address and business details. Shared with the admin profile editor; the caller saves.</summary>
+        internal static void ApplyVendor(HttpRequestMessage request, ApplicationDbContext db, string userId, ProfileBody body)
+        {
+            var profile = db.VendorProfiles.FirstOrDefault(p => p.UserId == userId);
+            if (profile == null) throw ApiResults.Problem(request, HttpStatusCode.NotFound, "Profile not found");
+            if (string.IsNullOrWhiteSpace(profile.OwnerName))
+            {
+                var user = db.Users.Find(userId);
+                profile.OwnerName = Cut(user == null ? null : user.FullName, 150) ?? "Supplier";
+            }
+            if (body.Address != null) profile.AddressLine1 = Cut(body.Address, 255);
+            if (body.City != null) profile.City = Cut(body.City, 100);
+            if (body.State != null) profile.State = Cut(body.State, 100);
+            if (body.Pincode != null) profile.PinCode = Cut(body.Pincode, 10);
+            if (body.ServiceLocations != null) profile.ServiceLocations = string.IsNullOrWhiteSpace(body.ServiceLocations) ? null : body.ServiceLocations.Trim();
+            if (body.YearOfEstablishment != null) profile.YearOfEstablishment = Cut(body.YearOfEstablishment, 10);
+            var gstin = TaxDocumentsController.NormalizeNumber(body.Gstin);
+            var pan = TaxDocumentsController.NormalizeNumber(body.Pan);
+            var invalid = TaxDocumentsController.NumberError(gstin, TaxDocumentsController.GstinMax, "GSTIN")
+                ?? TaxDocumentsController.NumberError(pan, TaxDocumentsController.PanMax, "PAN");
+            if (invalid != null) throw ApiResults.Problem(request, HttpStatusCode.BadRequest, invalid);
+            if (gstin != null) profile.GSTIN = gstin.Length == 0 ? null : gstin;
+            if (pan != null) profile.PAN = pan.Length == 0 ? null : pan;
+            profile.UpdatedAt = DateTime.Now;
         }
 
         string RequireOwner()
@@ -82,7 +105,7 @@ namespace Dashboards.Api
             return id;
         }
 
-        static object Read(ApplicationDbContext db, string userId)
+        internal static object Read(ApplicationDbContext db, string userId)
         {
             var user = db.Users.Find(userId);
             var logoUrl = user == null ? null : ComFiles.UserPhoto(user);
@@ -111,6 +134,10 @@ namespace Dashboards.Api
                 pincode = vendor == null ? null : vendor.PinCode,
                 serviceLocations = vendor == null ? null : vendor.ServiceLocations,
                 yearOfEstablishment = vendor == null ? null : vendor.YearOfEstablishment,
+                gstin = vendor == null ? null : vendor.GSTIN,
+                pan = vendor == null ? null : vendor.PAN,
+                gstinFileUrl = vendor == null ? null : TaxDocumentsController.FileUrl(vendor.GSTIN_File),
+                panFileUrl = vendor == null ? null : TaxDocumentsController.FileUrl(vendor.PAN_File),
                 logoUrl
             };
         }
