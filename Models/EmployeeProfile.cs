@@ -34,6 +34,12 @@ namespace Dashboards.Models
         public decimal? ExpectedSalary { get; set; }
 
         [StringLength(100)]
+        public string CurrentCtcText { get; set; }
+
+        [StringLength(100)]
+        public string ExpectedCtcText { get; set; }
+
+        [StringLength(100)]
         public string LocationCity { get; set; }
 
         [StringLength(100)]

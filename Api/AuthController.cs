@@ -32,7 +32,50 @@ namespace Dashboards.Api
             public string ServiceLocations { get; set; }
             public string YearOfEstablishment { get; set; }
             public string SupplierKind { get; set; }
+            public int? YearOfExperience { get; set; }
+            public string CurrentCtc { get; set; }
+            public string ExpectedCtc { get; set; }
             public List<SupplierOfferingInput> Offerings { get; set; }
+            public List<SeekerEducationInput> Educations { get; set; }
+            public List<SeekerExperienceInput> Experiences { get; set; }
+            public List<SeekerCertificateInput> Certificates { get; set; }
+        }
+
+        public class SeekerEducationInput
+        {
+            public string CollegeName { get; set; }
+            public string UniversityName { get; set; }
+            public string City { get; set; }
+            public string State { get; set; }
+            public int? StartYear { get; set; }
+            public int? EndYear { get; set; }
+            public string CourseMajor { get; set; }
+            public bool IsPursuing { get; set; }
+        }
+
+        public class SeekerExperienceInput
+        {
+            public string CompanyName { get; set; }
+            public string Designation { get; set; }
+            public string Department { get; set; }
+            public string City { get; set; }
+            public string State { get; set; }
+            public int? StartYear { get; set; }
+            public int? StartMonth { get; set; }
+            public int? EndYear { get; set; }
+            public int? EndMonth { get; set; }
+            public bool IsCurrent { get; set; }
+            public string Description { get; set; }
+        }
+
+        public class SeekerCertificateInput
+        {
+            public string Title { get; set; }
+            public string Authority { get; set; }
+            public int? IssueYear { get; set; }
+            public int? IssueMonth { get; set; }
+            public int? ExpiryYear { get; set; }
+            public int? ExpiryMonth { get; set; }
         }
 
         public class SupplierOfferingInput
@@ -425,6 +468,43 @@ namespace Dashboards.Api
             return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         }
 
+        static string JoinPlace(string city, string state)
+        {
+            var left = string.IsNullOrWhiteSpace(city) ? "" : city.Trim();
+            var right = string.IsNullOrWhiteSpace(state) ? "" : state.Trim();
+            if (left.Length == 0) return right.Length == 0 ? null : right;
+            if (right.Length == 0) return left;
+            return left + ", " + right;
+        }
+
+        static decimal? MoneyOrNull(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var digits = new System.Text.StringBuilder();
+            var dot = false;
+            foreach (var ch in raw)
+            {
+                if (char.IsDigit(ch)) digits.Append(ch);
+                else if (ch == '.' && !dot)
+                {
+                    digits.Append(ch);
+                    dot = true;
+                }
+            }
+            decimal value;
+            if (digits.Length == 0 || !decimal.TryParse(digits.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out value))
+                return null;
+            if (value <= 0) return null;
+            return value;
+        }
+
+        static DateTime? MonthDate(int? year, int? month)
+        {
+            if (!year.HasValue || year.Value < 1900 || year.Value > 2100) return null;
+            var m = month.HasValue && month.Value >= 1 && month.Value <= 12 ? month.Value : 1;
+            return new DateTime(year.Value, m, 1);
+        }
+
         static string Cut(string value, int max)
         {
             if (string.IsNullOrWhiteSpace(value)) return null;
@@ -548,13 +628,78 @@ namespace Dashboards.Api
             }
             else if (javaRole == "JOB_SEEKER")
             {
-                db.EmployeeProfiles.Add(new EmployeeProfile
+                JobSeekerSchema.Ensure();
+                var profile = new EmployeeProfile
                 {
                     UserId = user.Id,
                     FullName = name,
-                    LocationCity = body.City,
-                    LocationState = body.State
-                });
+                    LocationCity = Cut(body.City, 100),
+                    LocationState = Cut(body.State, 100),
+                    YearOfExperience = body.YearOfExperience,
+                    CurrentCtcText = Cut(body.CurrentCtc, 100),
+                    ExpectedCtcText = Cut(body.ExpectedCtc, 100),
+                    CurrentSalary = MoneyOrNull(body.CurrentCtc),
+                    ExpectedSalary = MoneyOrNull(body.ExpectedCtc)
+                };
+                db.EmployeeProfiles.Add(profile);
+                db.SaveChanges();
+                if (body.Educations != null)
+                {
+                    foreach (var item in body.Educations)
+                    {
+                        if (item == null) continue;
+                        if (string.IsNullOrWhiteSpace(item.CollegeName) && string.IsNullOrWhiteSpace(item.CourseMajor)) continue;
+                        db.EmployeeEducations.Add(new EmployeeEducation
+                        {
+                            EmployeeId = profile.EmployeeId,
+                            CollegeName = Cut(item.CollegeName, 200),
+                            UniversityName = Cut(item.UniversityName, 200),
+                            City = Cut(JoinPlace(item.City, item.State), 150),
+                            StartYear = item.StartYear,
+                            EndYear = item.IsPursuing ? null : item.EndYear,
+                            CourseMajor = Cut(item.CourseMajor, 200)
+                        });
+                    }
+                }
+                if (body.Experiences != null)
+                {
+                    foreach (var item in body.Experiences)
+                    {
+                        if (item == null || string.IsNullOrWhiteSpace(item.CompanyName)) continue;
+                        var start = MonthDate(item.StartYear, item.StartMonth) ?? DateTime.Now;
+                        db.EmployeeExperiences.Add(new EmployeeExperience
+                        {
+                            EmployeeId = profile.EmployeeId,
+                            CompanyName = Cut(item.CompanyName, 200),
+                            Designation = Cut(item.Designation, 150),
+                            Department = Cut(item.Department, 150),
+                            City = Cut(JoinPlace(item.City, item.State), 150),
+                            StartDate = start,
+                            EndDate = item.IsCurrent ? (DateTime?)null : MonthDate(item.EndYear, item.EndMonth),
+                            IsCurrentCompany = item.IsCurrent,
+                            Description = TrimOrNull(item.Description)
+                        });
+                    }
+                }
+                if (body.Certificates != null)
+                {
+                    foreach (var item in body.Certificates)
+                    {
+                        if (item == null || string.IsNullOrWhiteSpace(item.Title)) continue;
+                        var cert = new EmployeeCertificate
+                        {
+                            EmployeeId = profile.EmployeeId,
+                            Title = Cut(item.Title, 200),
+                            Authority = Cut(item.Authority, 200),
+                            IssueDate = MonthDate(item.IssueYear, item.IssueMonth) ?? DateTime.Now,
+                            ExpiryDate = MonthDate(item.ExpiryYear, item.ExpiryMonth)
+                        };
+                        db.EmployeeCertificates.Add(cert);
+                        db.SaveChanges();
+                        created.Add(new { id = cert.Id.ToString(), kind = "certificate" });
+                    }
+                }
+                db.SaveChanges();
             }
             else
             {

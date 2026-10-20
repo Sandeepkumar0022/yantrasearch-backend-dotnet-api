@@ -10,6 +10,7 @@ namespace Dashboards
             GlobalConfiguration.Configure(WebApiConfig.Register);
             SupplierItemSchema.Ensure();
             ListingActivitySchema.Ensure();
+            JobSeekerSchema.Ensure();
         }
     }
 }

@@ -41,6 +41,13 @@ namespace Dashboards.Api
             return Ok(AttachmentFiles.Save(Request, userId));
         }
 
+        [HttpDelete, Route("{id:int}")]
+        public IHttpActionResult Delete(int id)
+        {
+            var userId = RequireOwner();
+            return Ok(AttachmentFiles.Delete(Request, userId, id));
+        }
+
         string RequireOwner()
         {
             var id = CurrentUser.Id(this);
@@ -200,16 +207,28 @@ namespace Dashboards.Api
                         var employee = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == userId);
                         if (employee != null)
                         {
-                            var title = Path.GetFileNameWithoutExtension(safeName);
-                            if (string.IsNullOrWhiteSpace(title)) title = "Certificate";
-                            if (title.Length > 200) title = title.Substring(0, 200);
-                            db.EmployeeCertificates.Add(new EmployeeCertificate
+                            var certificateIdRaw = http.QueryString["certificateId"];
+                            int certificateId;
+                            EmployeeCertificate existing = null;
+                            if (int.TryParse(certificateIdRaw, out certificateId))
+                                existing = db.EmployeeCertificates.FirstOrDefault(c => c.Id == certificateId && c.EmployeeId == employee.EmployeeId);
+                            if (existing != null)
                             {
-                                EmployeeId = employee.EmployeeId,
-                                Title = title,
-                                IssueDate = DateTime.Now,
-                                DocumentUrl = target.WebPath
-                            });
+                                existing.DocumentUrl = target.WebPath;
+                            }
+                            else
+                            {
+                                var title = Path.GetFileNameWithoutExtension(safeName);
+                                if (string.IsNullOrWhiteSpace(title)) title = "Certificate";
+                                if (title.Length > 200) title = title.Substring(0, 200);
+                                db.EmployeeCertificates.Add(new EmployeeCertificate
+                                {
+                                    EmployeeId = employee.EmployeeId,
+                                    Title = title,
+                                    IssueDate = DateTime.Now,
+                                    DocumentUrl = target.WebPath
+                                });
+                            }
                         }
                     }
                     var row = new UserAttachment
@@ -231,6 +250,41 @@ namespace Dashboards.Api
             {
                 try { if (full != null && File.Exists(full)) File.Delete(full); } catch { }
                 throw;
+            }
+        }
+
+        public static object Delete(HttpRequestMessage request, string userId, int id)
+        {
+            using (var db = new ApplicationDbContext())
+            {
+                var row = db.UserAttachments.FirstOrDefault(a => a.Id == id && a.UserId == userId);
+                if (row == null)
+                    throw ApiResults.Problem(request, HttpStatusCode.NotFound, "Attachment not found");
+                var type = (row.AttachmentType ?? "").ToUpperInvariant();
+                var user = db.Users.Find(userId);
+                if (user != null && (type == "PROFILE_PHOTO" || type == "LOGO"))
+                    user.ProfilePic = null;
+                if (type == "RESUME")
+                {
+                    var employee = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == userId);
+                    if (employee != null && string.Equals(employee.ResumeUrl, row.StoragePath, StringComparison.OrdinalIgnoreCase))
+                        employee.ResumeUrl = null;
+                }
+                if (type == "CERTIFICATE")
+                {
+                    var employee = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == userId);
+                    if (employee != null)
+                    {
+                        var certs = db.EmployeeCertificates.Where(c => c.EmployeeId == employee.EmployeeId && c.DocumentUrl == row.StoragePath).ToList();
+                        foreach (var cert in certs)
+                            db.EmployeeCertificates.Remove(cert);
+                    }
+                }
+                var physical = ComFiles.Physical(row.StoragePath);
+                db.UserAttachments.Remove(row);
+                db.SaveChanges();
+                try { if (!string.IsNullOrEmpty(physical) && File.Exists(physical)) File.Delete(physical); } catch { }
+                return new { success = true };
             }
         }
 
