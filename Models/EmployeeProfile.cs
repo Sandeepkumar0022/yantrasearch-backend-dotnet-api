@@ -53,6 +53,9 @@ namespace Dashboards.Models
 
         public bool ReadyToRelocate { get; set; }
 
+        /// <summary>The job seeker ticked "I don't have any work experience". Added by .in.</summary>
+        public bool HasNoExperience { get; set; }
+
         public virtual ICollection<EmployeeExperience> Experiences { get; set; }
         public virtual ICollection<EmployeeEducation> Educations { get; set; }
         public virtual ICollection<EmployeeCertificate> Certificates { get; set; }

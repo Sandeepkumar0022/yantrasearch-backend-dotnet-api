@@ -8,7 +8,7 @@
 -- columns it maps, every new column is NULL or has a default, and the new tables are not used by it.
 --
 -- Contents
---   1. New columns on existing tables (10)
+--   1. New columns on existing tables (12)
 --   1b. Wider VendorProfile.GSTIN_File / PAN_File (15 / 10 -> 255) for stored document paths
 --   2. New tables (14)
 --   3. Default rows (membership plans, job category, site settings) - inserted only when missing
@@ -78,6 +78,18 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 SET @sql = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'ContractorProject' AND COLUMN_NAME = 'LabourStrength'),
   'SELECT 1', 'ALTER TABLE ContractorProject ADD COLUMN LabourStrength VARCHAR(100) NULL'));
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- EmployeeProfile.HasNoExperience ("I don't have any work experience"; existing rows get 0 = not stated)
+SET @sql = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'EmployeeProfile' AND COLUMN_NAME = 'HasNoExperience'),
+  'SELECT 1', 'ALTER TABLE EmployeeProfile ADD COLUMN HasNoExperience TINYINT(1) NOT NULL DEFAULT 0'));
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Equipment.RentalRateText (rent as the supplier writes it, e.g. "20K per month"; RentalRatePerDay/PerMonth stay as they are)
+SET @sql = (SELECT IF(EXISTS(SELECT 1 FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'Equipment' AND COLUMN_NAME = 'RentalRateText'),
+  'SELECT 1', 'ALTER TABLE Equipment ADD COLUMN RentalRateText VARCHAR(100) NULL'));
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- ---------------------------------------------------------------------------
@@ -344,7 +356,7 @@ SELECT 'mail.from', 'yantrasearch.help@gmail.com', NOW(), NOW()
 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM AppSetting WHERE SettingKey = 'mail.from');
 
 -- ---------------------------------------------------------------------------
--- 4. Check: expect 14 tables and 12 columns (10 above + SupplierOffering ImageUrl/UpdatedByName).
+-- 4. Check: expect 14 tables and 14 columns (12 above + SupplierOffering ImageUrl/UpdatedByName).
 -- ---------------------------------------------------------------------------
 
 SELECT COUNT(*) AS new_tables_present FROM information_schema.TABLES
@@ -356,9 +368,9 @@ WHERE TABLE_SCHEMA = @db AND TABLE_NAME IN (
 SELECT COUNT(*) AS new_columns_present FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = @db AND (
      (TABLE_NAME = 'ContactMessage'    AND COLUMN_NAME = 'Phone')
-  OR (TABLE_NAME = 'Equipment'         AND COLUMN_NAME = 'UpdatedByName')
+  OR (TABLE_NAME = 'Equipment'         AND COLUMN_NAME IN ('UpdatedByName','RentalRateText'))
   OR (TABLE_NAME = 'VendorProfile'     AND COLUMN_NAME = 'SupplierKind')
-  OR (TABLE_NAME = 'EmployeeProfile'   AND COLUMN_NAME IN ('CurrentCtcText','ExpectedCtcText','AddressLine1','PinCode'))
+  OR (TABLE_NAME = 'EmployeeProfile'   AND COLUMN_NAME IN ('CurrentCtcText','ExpectedCtcText','AddressLine1','PinCode','HasNoExperience'))
   OR (TABLE_NAME = 'ContractorProfile' AND COLUMN_NAME = 'HasNoPriorProjects')
   OR (TABLE_NAME = 'ContractorProject' AND COLUMN_NAME IN ('ClientName','LabourStrength'))
   OR (TABLE_NAME = 'SupplierOffering'  AND COLUMN_NAME IN ('ImageUrl','UpdatedByName')));

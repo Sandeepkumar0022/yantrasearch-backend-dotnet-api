@@ -42,9 +42,8 @@ namespace Dashboards.Api
                 if (user == null || profile == null)
                     throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
 
-                var createdCertificates = ApplyProfile(db, user, profile, body);
-                var saved = Read(db, user, profile);
-                return Ok(new { profile = saved, createdCertificates });
+                ApplyProfile(db, user, profile, body);
+                return Ok(Read(db, user, profile));
             }
         }
 
@@ -66,9 +65,9 @@ namespace Dashboards.Api
             }
         }
 
-        /// <summary>Job seeker details, education, experience, and certificates. Shared with the admin profile editor; saves the changes.
-        /// Returns the ids of newly created certificates keyed by the client's ClientKey.</summary>
-        internal static List<object> ApplyProfile(ApplicationDbContext db, ApplicationUser user, EmployeeProfile profile, ProfileBody body)
+        /// <summary>Job seeker details, education, and experience. Shared with the admin profile editor; saves the changes.
+        /// Certificates are stored but not read or written until that feature is turned back on.</summary>
+        internal static void ApplyProfile(ApplicationDbContext db, ApplicationUser user, EmployeeProfile profile, ProfileBody body)
         {
             if (body.Address != null) profile.AddressLine1 = Cut(body.Address, 255);
             if (body.Pincode != null) profile.PinCode = Cut(body.Pincode, 10);
@@ -135,48 +134,20 @@ namespace Dashboards.Api
                 }
             }
 
-            var createdCertificates = new List<object>();
-            if (body.Certificates != null)
+            var experienceCount = body.Experiences != null
+                ? body.Experiences.Count(item => item != null && !string.IsNullOrWhiteSpace(item.CompanyName))
+                : db.EmployeeExperiences.Count(e => e.EmployeeId == profile.EmployeeId);
+            if (body.HasNoExperience.HasValue)
             {
-                var incoming = body.Certificates.Where(c => c != null).ToList();
-                var keep = new HashSet<int>(incoming.Where(c => c.Id.HasValue).Select(c => c.Id.Value));
-                foreach (var row in db.EmployeeCertificates.Where(c => c.EmployeeId == profile.EmployeeId).ToList())
-                {
-                    if (!keep.Contains(row.Id))
-                        db.EmployeeCertificates.Remove(row);
-                }
-                foreach (var item in incoming)
-                {
-                    if (string.IsNullOrWhiteSpace(item.Title)) continue;
-                    if (item.Id.HasValue)
-                    {
-                        var row = db.EmployeeCertificates.FirstOrDefault(c => c.Id == item.Id.Value && c.EmployeeId == profile.EmployeeId);
-                        if (row == null) continue;
-                        row.Title = Cut(item.Title, 200);
-                        row.Authority = Cut(item.Authority, 200);
-                        var issued = MonthDate(item.IssueYear, item.IssueMonth);
-                        if (issued.HasValue) row.IssueDate = issued.Value;
-                        row.ExpiryDate = MonthDate(item.ExpiryYear, item.ExpiryMonth);
-                    }
-                    else
-                    {
-                        var row = new EmployeeCertificate
-                        {
-                            EmployeeId = profile.EmployeeId,
-                            Title = Cut(item.Title, 200),
-                            Authority = Cut(item.Authority, 200),
-                            IssueDate = MonthDate(item.IssueYear, item.IssueMonth) ?? DateTime.Now,
-                            ExpiryDate = MonthDate(item.ExpiryYear, item.ExpiryMonth)
-                        };
-                        db.EmployeeCertificates.Add(row);
-                        db.SaveChanges();
-                        createdCertificates.Add(new { id = row.Id, clientKey = item.ClientKey });
-                    }
-                }
+                profile.HasNoExperience = body.HasNoExperience.Value && experienceCount == 0;
+                if (profile.HasNoExperience) profile.YearOfExperience = 0;
+            }
+            else if (experienceCount > 0)
+            {
+                profile.HasNoExperience = false;
             }
 
             db.SaveChanges();
-            return createdCertificates;
         }
 
         string RequireSeeker()
@@ -193,7 +164,6 @@ namespace Dashboards.Api
         {
             var educations = db.EmployeeEducations.Where(e => e.EmployeeId == profile.EmployeeId).OrderByDescending(e => e.EndYear).ThenByDescending(e => e.StartYear).ToList();
             var experiences = db.EmployeeExperiences.Where(e => e.EmployeeId == profile.EmployeeId).OrderByDescending(e => e.IsCurrentCompany).ThenByDescending(e => e.StartDate).ToList();
-            var certificates = db.EmployeeCertificates.Where(e => e.EmployeeId == profile.EmployeeId).OrderByDescending(e => e.IssueDate).ToList();
             var resume = db.UserAttachments.Where(a => a.UserId == user.Id && a.AttachmentType == "RESUME").OrderByDescending(a => a.CreatedAt).FirstOrDefault();
             var photo = db.UserAttachments.Where(a => a.UserId == user.Id && a.AttachmentType == "PROFILE_PHOTO").OrderByDescending(a => a.CreatedAt).FirstOrDefault();
             return new
@@ -206,6 +176,7 @@ namespace Dashboards.Api
                 state = profile.LocationState,
                 designation = profile.Designation,
                 yearOfExperience = profile.YearOfExperience,
+                hasNoExperience = profile.HasNoExperience,
                 currentCtc = profile.CurrentCtcText,
                 expectedCtc = profile.ExpectedCtcText,
                 photoUrl = ComFiles.UserPhoto(user),
@@ -237,17 +208,6 @@ namespace Dashboards.Api
                     endYear = e.EndDate.HasValue ? e.EndDate.Value.Year : (int?)null,
                     isCurrent = e.IsCurrentCompany,
                     description = e.Description
-                }),
-                certificates = certificates.Select(c => new
-                {
-                    id = c.Id,
-                    title = c.Title,
-                    authority = c.Authority,
-                    issueMonth = c.IssueDate.Month,
-                    issueYear = c.IssueDate.Year,
-                    expiryMonth = c.ExpiryDate.HasValue ? c.ExpiryDate.Value.Month : (int?)null,
-                    expiryYear = c.ExpiryDate.HasValue ? c.ExpiryDate.Value.Year : (int?)null,
-                    documentUrl = string.IsNullOrWhiteSpace(c.DocumentUrl) ? null : ComFiles.AttachmentUrl(c.DocumentUrl)
                 })
             };
         }
@@ -305,11 +265,12 @@ namespace Dashboards.Api
             public string State { get; set; }
             public string Designation { get; set; }
             public int? YearOfExperience { get; set; }
+            /// <summary>Saved only when no experience is left after this save; then total experience becomes 0.</summary>
+            public bool? HasNoExperience { get; set; }
             public string CurrentCtc { get; set; }
             public string ExpectedCtc { get; set; }
             public List<EducationBody> Educations { get; set; }
             public List<ExperienceBody> Experiences { get; set; }
-            public List<CertificateBody> Certificates { get; set; }
         }
 
         public class EducationBody
@@ -337,18 +298,6 @@ namespace Dashboards.Api
             public int? EndMonth { get; set; }
             public bool IsCurrent { get; set; }
             public string Description { get; set; }
-        }
-
-        public class CertificateBody
-        {
-            public int? Id { get; set; }
-            public string ClientKey { get; set; }
-            public string Title { get; set; }
-            public string Authority { get; set; }
-            public int? IssueYear { get; set; }
-            public int? IssueMonth { get; set; }
-            public int? ExpiryYear { get; set; }
-            public int? ExpiryMonth { get; set; }
         }
     }
 }

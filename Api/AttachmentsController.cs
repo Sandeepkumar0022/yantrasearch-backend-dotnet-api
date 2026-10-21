@@ -146,7 +146,7 @@ namespace Dashboards.Api
     {
         public static object List(ApplicationDbContext db, string userId)
         {
-            var rows = db.UserAttachments.Where(a => a.UserId == userId)
+            var rows = db.UserAttachments.Where(a => a.UserId == userId && a.AttachmentType != "CERTIFICATE")
                 .OrderByDescending(a => a.CreatedAt)
                 .ToList();
             var list = rows.Select(ToResponse).ToList();
@@ -167,11 +167,6 @@ namespace Dashboards.Api
             var employee = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == userId);
             if (employee != null && !string.IsNullOrWhiteSpace(employee.ResumeUrl) && !types.Contains("RESUME"))
                 list.Add(Synthetic(userId, "RESUME", employee.ResumeUrl, ComFiles.AttachmentUrl(employee.ResumeUrl)));
-            if (employee != null && !types.Contains("CERTIFICATE"))
-            {
-                foreach (var cert in db.EmployeeCertificates.Where(c => c.EmployeeId == employee.EmployeeId && c.DocumentUrl != null).ToList())
-                    list.Add(Synthetic(userId, "CERTIFICATE", string.IsNullOrWhiteSpace(cert.Title) ? cert.DocumentUrl : cert.Title, ComFiles.AttachmentUrl(cert.DocumentUrl)));
-            }
             return list;
         }
 
@@ -182,7 +177,7 @@ namespace Dashboards.Api
             if (string.IsNullOrWhiteSpace(type))
                 throw ApiResults.Problem(request, HttpStatusCode.BadRequest, "Missing attachment type");
             type = type.Trim().ToUpperInvariant();
-            if (type != "LOGO" && type != "PROFILE_PHOTO" && type != "RESUME" && type != "CERTIFICATE")
+            if (type != "LOGO" && type != "PROFILE_PHOTO" && type != "RESUME")
                 throw ApiResults.Problem(request, HttpStatusCode.BadRequest, "Missing attachment type");
 
             var file = http == null ? null : http.Files["file"];
@@ -208,35 +203,6 @@ namespace Dashboards.Api
                     {
                         var employee = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == userId);
                         if (employee != null) employee.ResumeUrl = target.WebPath;
-                    }
-                    if (target.IsCertificate)
-                    {
-                        var employee = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == userId);
-                        if (employee != null)
-                        {
-                            var certificateIdRaw = http.QueryString["certificateId"];
-                            int certificateId;
-                            EmployeeCertificate existing = null;
-                            if (int.TryParse(certificateIdRaw, out certificateId))
-                                existing = db.EmployeeCertificates.FirstOrDefault(c => c.Id == certificateId && c.EmployeeId == employee.EmployeeId);
-                            if (existing != null)
-                            {
-                                existing.DocumentUrl = target.WebPath;
-                            }
-                            else
-                            {
-                                var title = Path.GetFileNameWithoutExtension(safeName);
-                                if (string.IsNullOrWhiteSpace(title)) title = "Certificate";
-                                if (title.Length > 200) title = title.Substring(0, 200);
-                                db.EmployeeCertificates.Add(new EmployeeCertificate
-                                {
-                                    EmployeeId = employee.EmployeeId,
-                                    Title = title,
-                                    IssueDate = DateTime.Now,
-                                    DocumentUrl = target.WebPath
-                                });
-                            }
-                        }
                     }
                     var row = new UserAttachment
                     {
@@ -276,16 +242,6 @@ namespace Dashboards.Api
                     var employee = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == userId);
                     if (employee != null && string.Equals(employee.ResumeUrl, row.StoragePath, StringComparison.OrdinalIgnoreCase))
                         employee.ResumeUrl = null;
-                }
-                if (type == "CERTIFICATE")
-                {
-                    var employee = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == userId);
-                    if (employee != null)
-                    {
-                        var certs = db.EmployeeCertificates.Where(c => c.EmployeeId == employee.EmployeeId && c.DocumentUrl == row.StoragePath).ToList();
-                        foreach (var cert in certs)
-                            db.EmployeeCertificates.Remove(cert);
-                    }
                 }
                 db.UserAttachments.Remove(row);
                 db.SaveChanges();

@@ -39,7 +39,6 @@ namespace Dashboards.Api
             public List<SupplierOfferingInput> Offerings { get; set; }
             public List<SeekerEducationInput> Educations { get; set; }
             public List<SeekerExperienceInput> Experiences { get; set; }
-            public List<SeekerCertificateInput> Certificates { get; set; }
             public List<string> WorkStates { get; set; }
             public List<string> ContractorTypes { get; set; }
             public string ContractorTypeOther { get; set; }
@@ -49,6 +48,8 @@ namespace Dashboards.Api
             public int? WorkExperience { get; set; }
             public string WorkSpecialisation { get; set; }
             public bool HasNoPriorProjects { get; set; }
+            /// <summary>Job seekers: "I don't have any work experience". Experiences are ignored and total experience is 0.</summary>
+            public bool HasNoExperience { get; set; }
             public List<ContractorProjectInput> Projects { get; set; }
         }
 
@@ -77,16 +78,6 @@ namespace Dashboards.Api
             public int? EndMonth { get; set; }
             public bool IsCurrent { get; set; }
             public string Description { get; set; }
-        }
-
-        public class SeekerCertificateInput
-        {
-            public string Title { get; set; }
-            public string Authority { get; set; }
-            public int? IssueYear { get; set; }
-            public int? IssueMonth { get; set; }
-            public int? ExpiryYear { get; set; }
-            public int? ExpiryMonth { get; set; }
         }
 
         public class SupplierOfferingInput
@@ -621,6 +612,7 @@ namespace Dashboards.Api
                             Name = equipmentName,
                             Category = Cut(string.IsNullOrWhiteSpace(item.Category) ? EquipmentCatalog.CategoryFor(equipmentName) : category, 255),
                             ThumbnailUrl = EquipmentCatalog.ThumbFor(equipmentName),
+                            IsAvailable = true,
                             CreatedAt = DateTime.Now,
                             UpdatedAt = DateTime.Now,
                             UpdatedByName = Cut(actor, 150)
@@ -701,7 +693,8 @@ namespace Dashboards.Api
                     LocationState = Cut(body.State, 100),
                     AddressLine1 = Cut(body.Address, 255),
                     PinCode = Cut(body.Pincode, 10),
-                    YearOfExperience = body.YearOfExperience,
+                    YearOfExperience = body.HasNoExperience ? 0 : body.YearOfExperience,
+                    HasNoExperience = body.HasNoExperience,
                     CurrentCtcText = Cut(body.CurrentCtc, 100),
                     ExpectedCtcText = Cut(body.ExpectedCtc, 100),
                     CurrentSalary = MoneyOrNull(body.CurrentCtc),
@@ -727,7 +720,7 @@ namespace Dashboards.Api
                         });
                     }
                 }
-                if (body.Experiences != null)
+                if (body.Experiences != null && !body.HasNoExperience)
                 {
                     foreach (var item in body.Experiences)
                     {
@@ -745,24 +738,6 @@ namespace Dashboards.Api
                             IsCurrentCompany = item.IsCurrent,
                             Description = TrimOrNull(item.Description)
                         });
-                    }
-                }
-                if (body.Certificates != null)
-                {
-                    foreach (var item in body.Certificates)
-                    {
-                        if (item == null || string.IsNullOrWhiteSpace(item.Title)) continue;
-                        var cert = new EmployeeCertificate
-                        {
-                            EmployeeId = profile.EmployeeId,
-                            Title = Cut(item.Title, 200),
-                            Authority = Cut(item.Authority, 200),
-                            IssueDate = MonthDate(item.IssueYear, item.IssueMonth) ?? DateTime.Now,
-                            ExpiryDate = MonthDate(item.ExpiryYear, item.ExpiryMonth)
-                        };
-                        db.EmployeeCertificates.Add(cert);
-                        db.SaveChanges();
-                        created.Add(new { id = cert.Id.ToString(), kind = "certificate" });
                     }
                 }
                 db.SaveChanges();

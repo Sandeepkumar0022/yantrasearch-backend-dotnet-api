@@ -91,6 +91,7 @@ namespace Dashboards.Api
                     Name = title,
                     Category = category,
                     ThumbnailUrl = EquipmentCatalog.ThumbFor(title),
+                    IsAvailable = true,
                     CreatedAt = DateTime.Now,
                     UpdatedAt = DateTime.Now,
                     UpdatedByName = ActorName(db, userId)
@@ -192,7 +193,7 @@ namespace Dashboards.Api
                 location = e.Location,
                 ratePerDay = e.RentalRatePerDay,
                 ratePerMonth = e.RentalRatePerMonth,
-                salePrice = e.SalePrice,
+                rentalRateText = e.RentalRateText,
                 make = e.Make,
                 modelNumber = e.ModelNumber,
                 yearOfManufacture = e.YearOfManufacture,
@@ -347,7 +348,6 @@ namespace Dashboards.Api
                 education = EducationLabel(educations),
                 currentCompany = current != null ? current.CompanyName : "",
                 department = current != null ? current.Department ?? "" : "",
-                skills = new string[0],
                 image = JobSeekerImage(e, photos),
                 availability = "Available",
                 experiences = jobs.OrderByDescending(x => x.IsCurrentCompany).ThenByDescending(x => x.StartDate).Select(x => new

@@ -300,10 +300,11 @@ namespace Dashboards.Api
             using (var db = new ApplicationDbContext())
             {
                 var q = db.ClientRequirements.AsQueryable();
-                var supplier = CurrentUser.Is(this, "SUPPLIER");
-                if (!admin && !supplier) q = q.Where(r => r.ClientUserId == userId);
+                // Suppliers and contractors see every requirement without the client's identity; clients see only their own.
+                var marketplace = CurrentUser.Is(this, "SUPPLIER", "CONTRACTOR");
+                if (!admin && !marketplace) q = q.Where(r => r.ClientUserId == userId);
                 var rows = q.OrderByDescending(r => r.CreatedAt).Take(200).ToList();
-                if (supplier && !admin)
+                if (marketplace && !admin)
                 {
                     return Ok(MarketplaceController.Page(rows.Select(RequirementPublicDto)));
                 }
@@ -457,7 +458,6 @@ namespace Dashboards.Api
                 var role = AuthController.JavaRole(db, user);
                 if (role == "ADMIN")
                     throw ApiResults.Problem(Request, HttpStatusCode.BadRequest, "Admin accounts are not edited here");
-                var createdCertificates = new List<object>();
                 using (var tx = db.Database.BeginTransaction())
                 {
                     if (body.Account != null) AuthController.ApplyAccount(Request, db, user, body.Account);
@@ -479,12 +479,12 @@ namespace Dashboards.Api
                     {
                         var profile = db.EmployeeProfiles.FirstOrDefault(e => e.UserId == user.Id);
                         if (profile == null) throw ApiResults.Problem(Request, HttpStatusCode.NotFound, "Profile not found");
-                        createdCertificates = JobSeekerController.ApplyProfile(db, user, profile, body.JobSeeker);
+                        JobSeekerController.ApplyProfile(db, user, profile, body.JobSeeker);
                     }
                     db.SaveChanges();
                     tx.Commit();
                 }
-                return Ok(new { details = ReadDetails(db, user), createdCertificates });
+                return Ok(new { details = ReadDetails(db, user) });
             }
         }
 

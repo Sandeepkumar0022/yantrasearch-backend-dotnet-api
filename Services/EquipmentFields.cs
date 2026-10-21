@@ -23,6 +23,8 @@ namespace Dashboards.Services
         public decimal? RatePerDay { get; set; }
         public decimal? RatePerMonth { get; set; }
         public decimal? SalePrice { get; set; }
+        /// <summary>Free-text rent, e.g. "5000 per day". The dashboards no longer send the numeric rates or sale price.</summary>
+        public string RentalRateText { get; set; }
         public bool? IsAvailableForRent { get; set; }
         public bool? IsAvailableForSale { get; set; }
         public string Status { get; set; }
@@ -66,10 +68,18 @@ namespace Dashboards.Services
                 return "Year of manufacture must be between 1900 and " + DateTime.Now.Year;
             if (Negative(input.RatePerDay) || Negative(input.RatePerMonth) || Negative(input.SalePrice))
                 return "Prices cannot be negative";
+            if (input.RentalRateText != null && input.RentalRateText.Trim().Length > RentalRateTextMax)
+                return "Rent must be " + RentalRateTextMax + " characters or fewer";
             return null;
         }
 
-        /// <summary>Copies every field from the input. Callers validate first.</summary>
+        public const int RentalRateTextMax = 100;
+
+        /// <summary>
+        /// Copies the form fields from the input. Callers validate first.
+        /// Rates, sale price and the availability flags are written only when sent, so stored .com values survive an edit.
+        /// New rows must set IsAvailable (rent) themselves.
+        /// </summary>
         public static void Apply(Equipment row, EquipmentInput input)
         {
             row.Description = Blank(input.Description);
@@ -80,11 +90,12 @@ namespace Dashboards.Services
             row.Capacity = Blank(input.Capacity);
             row.Condition = string.IsNullOrWhiteSpace(input.Condition) ? null : Match(Conditions, input.Condition) ?? input.Condition.Trim();
             row.Location = string.Join(",", CleanLocations(input.Locations));
-            row.RentalRatePerDay = input.RatePerDay;
-            row.RentalRatePerMonth = input.RatePerMonth;
-            row.SalePrice = input.SalePrice;
-            row.IsAvailable = input.IsAvailableForRent ?? true;
-            row.IsAvailableForSale = input.IsAvailableForSale ?? false;
+            row.RentalRateText = Cut(input.RentalRateText, RentalRateTextMax);
+            if (input.RatePerDay.HasValue) row.RentalRatePerDay = input.RatePerDay;
+            if (input.RatePerMonth.HasValue) row.RentalRatePerMonth = input.RatePerMonth;
+            if (input.SalePrice.HasValue) row.SalePrice = input.SalePrice;
+            if (input.IsAvailableForRent.HasValue) row.IsAvailable = input.IsAvailableForRent.Value;
+            if (input.IsAvailableForSale.HasValue) row.IsAvailableForSale = input.IsAvailableForSale.Value;
             row.Status = string.IsNullOrWhiteSpace(input.Status) ? "Active" : Match(Statuses, input.Status);
         }
 

@@ -581,11 +581,6 @@ namespace Dashboards.Api
                 }
                 if (!string.IsNullOrWhiteSpace(employee.ResumeUrl))
                     docs.Add(new { id = "resume-" + employee.EmployeeId, docType = "RESUME", url = ComFiles.PublicUrl(employee.ResumeUrl), uploadedAt = (DateTime?)null });
-                var certs = db.EmployeeCertificates.Where(c => c.EmployeeId == id).ToList();
-                foreach (var c in certs)
-                {
-                    docs.Add(new { id = "cert-" + c.Id, docType = "CERTIFICATE", url = MarketplaceController.PublicUrl(c.DocumentUrl), uploadedAt = c.IssueDate });
-                }
                 return Ok(docs);
             }
         }

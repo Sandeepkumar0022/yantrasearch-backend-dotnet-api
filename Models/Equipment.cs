@@ -46,6 +46,10 @@ namespace Dashboards.Models
         public decimal? RentalRatePerMonth { get; set; }
         public decimal? SalePrice { get; set; }
 
+        /// <summary>Rent as the supplier writes it, e.g. "20K per month". Added by .in; the numeric rates above are kept for older rows.</summary>
+        [StringLength(100)]
+        public string RentalRateText { get; set; }
+
         public bool IsAvailable { get; set; }
         public bool IsAvailableForSale { get; set; }
 
